@@ -100,9 +100,6 @@ resource "azurerm_linux_virtual_machine" "mi_vm" {
   size                            = var.vm_size
   admin_username                  = var.admin_username
   disable_password_authentication = true
-  priority                        = "Spot"
-  eviction_policy                 = "Deallocate"
-  max_bid_price                   = 0.03
 
   network_interface_ids = [
     azurerm_network_interface.mi_nic.id,
