@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AKS + Node Auto-Provisioning (Karpenter) — Architecture</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --azure-blue:  #0078d4;
+  --azure-dark:  #004578;
+  --azure-light: #dff0fc;
+  --green:       #107c10;
+  --green-light: #dff6dd;
+  --k8s-blue:    #326ce5;
+  --k8s-light:   #e8effe;
+  --text:        #1b1b1b;
+  --muted:       #605e5c;
+  --border:      #d2d0ce;
+  --shadow:      0 2px 12px rgba(0,0,0,.10);
+  --r:           10px;
+}
+body { font-family: "Segoe UI", system-ui, sans-serif; background: #f0f2f5; color: var(--text); min-height: 100vh; }
+header { background: linear-gradient(130deg, #003366 0%, #326ce5 100%); color: #fff; padding: 2.2rem 3rem 2rem; }
+header h1 { font-size: 1.75rem; font-weight: 700; }
+header p { margin-top: .4rem; opacity: .82; font-size: .93rem; }
+.badge-row { display: flex; gap: .5rem; margin-top: .9rem; flex-wrap: wrap; }
+.badge { background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3); border-radius: 20px; padding: .18rem .7rem; font-size: .75rem; font-weight: 600; }
+.page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 3rem; display: flex; flex-direction: column; gap: 1.5rem; }
+.card { background: #fff; border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+.card-title { font-size: .73rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 1rem 1.5rem .8rem; border-bottom: 1px solid #f0eded; }
+.diagram-wrap { padding: 1.5rem; }
+svg.arch { width: 100%; height: auto; display: block; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
+.info-card { background: #fff; border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); padding: 1.15rem 1.35rem; }
+.info-card h3 { font-size: .82rem; font-weight: 700; margin-bottom: .9rem; padding-bottom: .45rem; border-bottom: 2px solid; }
+.info-card h3.azure { border-color: var(--azure-blue); color: var(--azure-dark); }
+.info-card h3.k8s   { border-color: var(--k8s-blue); color: var(--k8s-blue); }
+.info-card h3.sec   { border-color: var(--green); color: var(--green); }
+.info-card h3.dep   { border-color: #8a6914; color: #8a6914; }
+dl.kv { display: flex; flex-direction: column; gap: .38rem; font-size: .82rem; }
+dl.kv dt { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .4px; margin-top: .2rem; }
+dl.kv dd { font-weight: 500; }
+dl.kv dd code { font-family: "Consolas", monospace; font-size: .78rem; background: #f3f2f1; padding: .1rem .32rem; border-radius: 3px; }
+ol.steps { list-style: none; display: flex; flex-direction: column; gap: .55rem; font-size: .82rem; }
+ol.steps li { display: flex; gap: .6rem; align-items: flex-start; }
+ol.steps li .n { background: var(--k8s-blue); color: #fff; border-radius: 50%; width: 20px; height: 20px; min-width: 20px; display: flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 700; margin-top: .08rem; }
+footer { text-align: center; padding: 1.8rem; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--border); margin-top: .5rem; }
+@media (max-width: 700px) { .grid2, .grid3 { grid-template-columns: 1fr; } header { padding: 1.5rem; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AKS + Node Auto-Provisioning (Karpenter) — Architecture</h1>
+  <p>Managed Kubernetes with Karpenter-based intelligent node scaling on Azure — Sweden Central</p>
+  <div class="badge-row">
+    <span class="badge">AKS Standard</span>
+    <span class="badge">Azure CNI Overlay</span>
+    <span class="badge">NAP / Karpenter</span>
+    <span class="badge">OIDC + Workload Identity</span>
+    <span class="badge">Terraform</span>
+    <span class="badge">Sweden Central</span>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- SVG Architecture Diagram -->
+  <div class="card">
+    <div class="card-title">Architecture Diagram</div>
+    <div class="diagram-wrap">
+      <svg class="arch" viewBox="0 0 960 660" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI',system-ui,sans-serif">
+
+        <!-- ========== AZURE ZONE ========== -->
+        <rect x="20" y="20" width="920" height="210" rx="12" fill="#dff0fc" stroke="#0078d4" stroke-width="1.5"/>
+        <text x="38" y="42" font-size="11" font-weight="700" fill="#004578" text-anchor="start" letter-spacing="1">AZURE MANAGED ZONE — Sweden Central</text>
+
+        <!-- VNet box -->
+        <rect x="40" y="54" width="380" height="160" rx="9" fill="#fff" stroke="#0078d4" stroke-width="1.5"/>
+        <text x="60" y="73" font-size="10" font-weight="700" fill="#0078d4" letter-spacing=".5">VNet: mi-vnet-aks</text>
+        <text x="60" y="86" font-size="9" fill="#605e5c">10.10.0.0/16</text>
+
+        <!-- Subnet inside VNet -->
+        <rect x="60" y="96" width="340" height="104" rx="7" fill="#e6f4ff" stroke="#0078d4" stroke-width="1" stroke-dasharray="5,3"/>
+        <text x="80" y="114" font-size="9.5" font-weight="700" fill="#004578">Subnet: sn-nodes</text>
+        <text x="80" y="127" font-size="9" fill="#605e5c">10.10.1.0/24 — Worker Nodes</text>
+
+        <!-- Node icons inside subnet -->
+        <!-- System node 1 -->
+        <rect x="80" y="136" width="90" height="50" rx="6" fill="#326ce5" stroke="#1a4fb5" stroke-width="1"/>
+        <text x="125" y="156" font-size="8.5" font-weight="700" fill="#fff" text-anchor="middle">System Node 1</text>
+        <text x="125" y="168" font-size="7.5" fill="#cce0ff" text-anchor="middle">Standard_D2s_v3</text>
+        <text x="125" y="180" font-size="7" fill="#aad0ff" text-anchor="middle">kubelet · kube-proxy</text>
+
+        <!-- System node 2 -->
+        <rect x="188" y="136" width="90" height="50" rx="6" fill="#326ce5" stroke="#1a4fb5" stroke-width="1"/>
+        <text x="233" y="156" font-size="8.5" font-weight="700" fill="#fff" text-anchor="middle">System Node 2</text>
+        <text x="233" y="168" font-size="7.5" fill="#cce0ff" text-anchor="middle">Standard_D2s_v3</text>
+        <text x="233" y="180" font-size="7" fill="#aad0ff" text-anchor="middle">kubelet · kube-proxy</text>
+
+        <!-- NAP node (provisioned) -->
+        <rect x="296" y="136" width="90" height="50" rx="6" fill="#107c10" stroke="#0a5a0a" stroke-width="1" stroke-dasharray="4,2"/>
+        <text x="341" y="152" font-size="8" font-weight="700" fill="#fff" text-anchor="middle">NAP Node</text>
+        <text x="341" y="164" font-size="7.5" fill="#bfffbf" text-anchor="middle">(auto-provisioned)</text>
+        <text x="341" y="176" font-size="7" fill="#9fffbf" text-anchor="middle">any SKU / zone</text>
+        <text x="341" y="186" font-size="7" fill="#dfffdf" text-anchor="middle">Karpenter</text>
+
+        <!-- AKS Control Plane box -->
+        <rect x="450" y="54" width="450" height="160" rx="9" fill="#fff" stroke="#0078d4" stroke-width="1.5"/>
+        <text x="470" y="73" font-size="10" font-weight="700" fill="#0078d4" letter-spacing=".5">AKS Control Plane</text>
+        <text x="470" y="86" font-size="9" fill="#605e5c">Managed by Azure · not in customer VNet</text>
+
+        <!-- API Server -->
+        <rect x="470" y="96" width="110" height="50" rx="6" fill="#0078d4" stroke="#004578" stroke-width="1"/>
+        <text x="525" y="118" font-size="9" font-weight="700" fill="#fff" text-anchor="middle">API Server</text>
+        <text x="525" y="131" font-size="7.5" fill="#cde9ff" text-anchor="middle">OIDC Issuer</text>
+        <text x="525" y="143" font-size="7.5" fill="#cde9ff" text-anchor="middle">Workload Identity</text>
+
+        <!-- etcd -->
+        <rect x="598" y="96" width="90" height="50" rx="6" fill="#004578" stroke="#002a4e" stroke-width="1"/>
+        <text x="643" y="118" font-size="9" font-weight="700" fill="#fff" text-anchor="middle">etcd</text>
+        <text x="643" y="131" font-size="7.5" fill="#aad4ff" text-anchor="middle">cluster state</text>
+        <text x="643" y="143" font-size="7.5" fill="#aad4ff" text-anchor="middle">HA managed</text>
+
+        <!-- Scheduler / Controller -->
+        <rect x="706" y="96" width="110" height="50" rx="6" fill="#005a9e" stroke="#003f73" stroke-width="1"/>
+        <text x="761" y="116" font-size="9" font-weight="700" fill="#fff" text-anchor="middle">Scheduler &amp;</text>
+        <text x="761" y="128" font-size="9" font-weight="700" fill="#fff" text-anchor="middle">Controllers</text>
+        <text x="761" y="141" font-size="7.5" fill="#aad4ff" text-anchor="middle">NAP controller</text>
+
+        <!-- Karpenter label in CP -->
+        <rect x="834" y="96" width="48" height="50" rx="6" fill="#326ce5" stroke="#1a4fb5" stroke-width="1"/>
+        <text x="858" y="118" font-size="8" font-weight="700" fill="#fff" text-anchor="middle">Karpen</text>
+        <text x="858" y="130" font-size="8" font-weight="700" fill="#fff" text-anchor="middle">ter</text>
+        <text x="858" y="143" font-size="7" fill="#cde0ff" text-anchor="middle">NAP</text>
+
+        <!-- Network info in CP bottom -->
+        <text x="470" y="168" font-size="8" fill="#605e5c">DNS prefix: mi-5-aks · SKU: Standard · Identity: SystemAssigned</text>
+        <text x="470" y="180" font-size="8" fill="#605e5c">Pod CIDR: 192.168.0.0/16 · Service CIDR: 172.16.0.0/16 · DNS: 172.16.0.10</text>
+        <text x="470" y="192" font-size="8" fill="#605e5c">Network: Azure CNI Overlay · Plugin Mode: overlay</text>
+
+        <!-- Arrow: API Server → Nodes (kubelet) -->
+        <defs>
+          <marker id="arr-blue" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#0078d4"/>
+          </marker>
+          <marker id="arr-green" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#107c10"/>
+          </marker>
+          <marker id="arr-k8s" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#326ce5"/>
+          </marker>
+          <marker id="arr-amber" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#8a6914"/>
+          </marker>
+          <marker id="arr-blue-left" markerWidth="8" markerHeight="6" refX="0" refY="3" orient="auto">
+            <polygon points="8 0, 0 3, 8 6" fill="#0078d4"/>
+          </marker>
+        </defs>
+
+        <!-- Bidirectional arrow: API Server ↔ Node pool (kubelet) -->
+        <line x1="450" y1="122" x2="430" y2="162" stroke="#0078d4" stroke-width="1.5" marker-end="url(#arr-blue)" stroke-dasharray="6,3"/>
+        <line x1="420" y1="155" x2="460" y2="118" stroke="#0078d4" stroke-width="1.5" marker-end="url(#arr-blue)" stroke-dasharray="6,3"/>
+        <text x="430" y="136" font-size="8" fill="#004578" text-anchor="middle">kubelet</text>
+
+        <!-- ========== NODE POOL ZONE ========== -->
+        <rect x="20" y="248" width="920" height="130" rx="12" fill="#dff6dd" stroke="#107c10" stroke-width="1.5"/>
+        <text x="38" y="270" font-size="11" font-weight="700" fill="#107c10" text-anchor="start" letter-spacing="1">NODE POOL ZONE</text>
+
+        <!-- System pool label -->
+        <rect x="40" y="280" width="310" height="82" rx="8" fill="#fff" stroke="#107c10" stroke-width="1"/>
+        <text x="55" y="298" font-size="9.5" font-weight="700" fill="#107c10">System Node Pool — "system"</text>
+        <text x="55" y="311" font-size="8.5" fill="#605e5c">only_critical_addons_enabled = true</text>
+        <text x="55" y="324" font-size="8" fill="#605e5c">2 nodes · Standard_D2s_v3 · sn-nodes subnet</text>
+        <text x="55" y="337" font-size="8" fill="#605e5c">Runs: CoreDNS, kube-proxy, azure-cni, CSI drivers</text>
+        <text x="55" y="350" font-size="8" fill="#605e5c">Tainted: CriticalAddonsOnly=true:NoSchedule</text>
+
+        <!-- Karpenter / NAP scaling illustration -->
+        <rect x="370" y="280" width="570" height="82" rx="8" fill="#fff" stroke="#326ce5" stroke-width="1"/>
+        <text x="385" y="298" font-size="9.5" font-weight="700" fill="#326ce5">NAP / Karpenter Auto-Provisioning Flow</text>
+
+        <!-- Pending Pod -->
+        <rect x="390" y="308" width="80" height="40" rx="5" fill="#fef3cd" stroke="#8a6914" stroke-width="1"/>
+        <text x="430" y="324" font-size="8" font-weight="700" fill="#8a6914" text-anchor="middle">Pending</text>
+        <text x="430" y="337" font-size="8" fill="#8a6914" text-anchor="middle">Pod</text>
+        <text x="430" y="348" font-size="7" fill="#a07820" text-anchor="middle">unschedulable</text>
+
+        <!-- Arrow: Pending → Karpenter -->
+        <line x1="470" y1="328" x2="502" y2="328" stroke="#326ce5" stroke-width="1.5" marker-end="url(#arr-k8s)"/>
+
+        <!-- Karpenter evaluate -->
+        <rect x="502" y="308" width="90" height="40" rx="5" fill="#e8effe" stroke="#326ce5" stroke-width="1"/>
+        <text x="547" y="322" font-size="8" font-weight="700" fill="#326ce5" text-anchor="middle">Karpenter</text>
+        <text x="547" y="334" font-size="8" fill="#326ce5" text-anchor="middle">evaluates</text>
+        <text x="547" y="346" font-size="7.5" fill="#326ce5" text-anchor="middle">NodePool CRD</text>
+
+        <!-- Arrow: Karpenter → New Node -->
+        <line x1="592" y1="328" x2="624" y2="328" stroke="#107c10" stroke-width="1.5" marker-end="url(#arr-green)"/>
+
+        <!-- New Node provisioned -->
+        <rect x="624" y="308" width="90" height="40" rx="5" fill="#dff6dd" stroke="#107c10" stroke-width="1"/>
+        <text x="669" y="322" font-size="8" font-weight="700" fill="#107c10" text-anchor="middle">Node</text>
+        <text x="669" y="334" font-size="8" fill="#107c10" text-anchor="middle">Provisioned</text>
+        <text x="669" y="346" font-size="7.5" fill="#107c10" text-anchor="middle">joins cluster</text>
+
+        <!-- Arrow: Node → Pod Scheduled -->
+        <line x1="714" y1="328" x2="746" y2="328" stroke="#326ce5" stroke-width="1.5" marker-end="url(#arr-k8s)"/>
+
+        <!-- Pod Scheduled -->
+        <rect x="746" y="308" width="85" height="40" rx="5" fill="#e8effe" stroke="#326ce5" stroke-width="1"/>
+        <text x="788" y="322" font-size="8" font-weight="700" fill="#326ce5" text-anchor="middle">Pod</text>
+        <text x="788" y="334" font-size="8" fill="#326ce5" text-anchor="middle">Scheduled</text>
+        <text x="788" y="346" font-size="7.5" fill="#326ce5" text-anchor="middle">&amp; Running</text>
+
+        <!-- Scale-down arrow (curved) - idle → removed -->
+        <path d="M 831 348 Q 900 370 900 308 Q 900 295 880 290" stroke="#ff6b35" stroke-width="1.5" fill="none" stroke-dasharray="5,3" marker-end="url(#arr-amber)"/>
+        <text x="910" y="330" font-size="7.5" fill="#ff6b35" text-anchor="middle">idle</text>
+        <text x="910" y="342" font-size="7.5" fill="#ff6b35" text-anchor="middle">→ removed</text>
+
+        <!-- ========== KUBERNETES LAYER ========== -->
+        <rect x="20" y="396" width="920" height="140" rx="12" fill="#e8effe" stroke="#326ce5" stroke-width="1.5"/>
+        <text x="38" y="418" font-size="11" font-weight="700" fill="#326ce5" text-anchor="start" letter-spacing="1">KUBERNETES RESOURCE LAYER</text>
+
+        <!-- NodePool CRD -->
+        <rect x="40" y="428" width="190" height="94" rx="8" fill="#fff" stroke="#326ce5" stroke-width="1.5"/>
+        <text x="135" y="447" font-size="9.5" font-weight="700" fill="#326ce5" text-anchor="middle">NodePool CRD</text>
+        <text x="135" y="460" font-size="8" fill="#605e5c" text-anchor="middle">kind: NodePool</text>
+        <text x="60" y="476" font-size="7.5" fill="#1b1b1b">· requirements: instance-type, zone</text>
+        <text x="60" y="489" font-size="7.5" fill="#1b1b1b">· limits: cpu, memory caps</text>
+        <text x="60" y="502" font-size="7.5" fill="#1b1b1b">· disruption: consolidateAfter</text>
+        <text x="60" y="515" font-size="7.5" fill="#1b1b1b">· nodeClassRef → AKSNodeClass</text>
+
+        <!-- AKSNodeClass CRD -->
+        <rect x="248" y="428" width="190" height="94" rx="8" fill="#fff" stroke="#0078d4" stroke-width="1.5"/>
+        <text x="343" y="447" font-size="9.5" font-weight="700" fill="#0078d4" text-anchor="middle">AKSNodeClass CRD</text>
+        <text x="343" y="460" font-size="8" fill="#605e5c" text-anchor="middle">kind: AKSNodeClass</text>
+        <text x="268" y="476" font-size="7.5" fill="#1b1b1b">· imageFamily: AzureLinux / Ubuntu</text>
+        <text x="268" y="489" font-size="7.5" fill="#1b1b1b">· osDiskSizeGB</text>
+        <text x="268" y="502" font-size="7.5" fill="#1b1b1b">· subnetID → sn-nodes</text>
+        <text x="268" y="515" font-size="7.5" fill="#1b1b1b">· labels, taints for workloads</text>
+
+        <!-- nginx deployment pod -->
+        <rect x="456" y="428" width="160" height="94" rx="8" fill="#fff" stroke="#326ce5" stroke-width="1.5"/>
+        <text x="536" y="447" font-size="9.5" font-weight="700" fill="#326ce5" text-anchor="middle">nginx Deployment</text>
+        <text x="536" y="460" font-size="8" fill="#605e5c" text-anchor="middle">Test workload (manifests/)</text>
+        <text x="476" y="476" font-size="7.5" fill="#1b1b1b">· replicas: scaled via kubectl</text>
+        <text x="476" y="489" font-size="7.5" fill="#1b1b1b">· triggers NAP scale-up</text>
+        <text x="476" y="502" font-size="7.5" fill="#1b1b1b">· scheduled on NAP node</text>
+        <text x="476" y="515" font-size="7.5" fill="#1b1b1b">· scale-down → node removed</text>
+
+        <!-- Overlay CNI pods -->
+        <rect x="634" y="428" width="165" height="94" rx="8" fill="#fff" stroke="#107c10" stroke-width="1.5"/>
+        <text x="716" y="447" font-size="9.5" font-weight="700" fill="#107c10" text-anchor="middle">Azure CNI Overlay</text>
+        <text x="716" y="460" font-size="8" fill="#605e5c" text-anchor="middle">Pod Network (not in VNet)</text>
+        <text x="654" y="476" font-size="7.5" fill="#1b1b1b">· Pod IPs: 192.168.x.x</text>
+        <text x="654" y="489" font-size="7.5" fill="#1b1b1b">· Service IPs: 172.16.x.x</text>
+        <text x="654" y="502" font-size="7.5" fill="#1b1b1b">· Overlay: pods don't consume VNet IPs</text>
+        <text x="654" y="515" font-size="7.5" fill="#1b1b1b">· Node IPs: 10.10.1.x (sn-nodes)</text>
+
+        <!-- Workload Identity -->
+        <rect x="817" y="428" width="108" height="94" rx="8" fill="#fff" stroke="#604c8a" stroke-width="1.5"/>
+        <text x="871" y="445" font-size="9" font-weight="700" fill="#604c8a" text-anchor="middle">Workload</text>
+        <text x="871" y="457" font-size="9" font-weight="700" fill="#604c8a" text-anchor="middle">Identity</text>
+        <text x="830" y="472" font-size="7.5" fill="#1b1b1b">· OIDC Issuer</text>
+        <text x="830" y="485" font-size="7.5" fill="#1b1b1b">· Pod → Azure AD</text>
+        <text x="830" y="498" font-size="7.5" fill="#1b1b1b">· No secrets needed</text>
+        <text x="830" y="511" font-size="7.5" fill="#1b1b1b">· Federated token</text>
+
+        <!-- Arrows between zones -->
+        <!-- NodePool → Karpenter (up arrow) -->
+        <line x1="135" y1="428" x2="547" y2="360" stroke="#326ce5" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-k8s)"/>
+
+        <!-- AKSNodeClass → Node provisioned -->
+        <line x1="343" y1="428" x2="669" y2="362" stroke="#0078d4" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-blue)"/>
+
+      </svg>
+    </div>
+  </div>
+
+  <!-- Cluster Config + Network Topology -->
+  <div class="grid2">
+    <div class="info-card">
+      <h3 class="azure">Cluster Configuration</h3>
+      <dl class="kv">
+        <dt>Cluster Name</dt>
+        <dd><code>mi-5-aks</code></dd>
+        <dt>Location</dt>
+        <dd>Sweden Central</dd>
+        <dt>SKU Tier</dt>
+        <dd>Standard (SLA-backed control plane)</dd>
+        <dt>DNS Prefix</dt>
+        <dd><code>mi-5-aks</code></dd>
+        <dt>Identity</dt>
+        <dd>SystemAssigned (Managed Identity)</dd>
+        <dt>OIDC Issuer</dt>
+        <dd>Enabled — required for Workload Identity</dd>
+        <dt>Workload Identity</dt>
+        <dd>Enabled — pods get Azure AD tokens</dd>
+        <dt>Node Auto-Provisioning</dt>
+        <dd><code>mode = Auto</code> — managed Karpenter</dd>
+        <dt>Default Node Pool</dt>
+        <dd><code>system</code> — 2 × Standard_D2s_v3</dd>
+        <dt>System Pool Mode</dt>
+        <dd><code>only_critical_addons_enabled = true</code></dd>
+      </dl>
+    </div>
+
+    <div class="info-card">
+      <h3 class="k8s">Network Topology</h3>
+      <dl class="kv">
+        <dt>VNet</dt>
+        <dd><code>mi-vnet-aks</code> — 10.10.0.0/16</dd>
+        <dt>Node Subnet</dt>
+        <dd><code>sn-nodes</code> — 10.10.1.0/24</dd>
+        <dt>CNI Plugin</dt>
+        <dd>Azure CNI — <code>network_plugin = "azure"</code></dd>
+        <dt>Plugin Mode</dt>
+        <dd><code>overlay</code> — pods get IPs from pod_cidr</dd>
+        <dt>Pod CIDR</dt>
+        <dd><code>192.168.0.0/16</code> (overlay, not in VNet)</dd>
+        <dt>Service CIDR</dt>
+        <dd><code>172.16.0.0/16</code></dd>
+        <dt>DNS Service IP</dt>
+        <dd><code>172.16.0.10</code> (CoreDNS ClusterIP)</dd>
+        <dt>Overlay benefit</dt>
+        <dd>Pods do not consume VNet IP space — scalable to thousands of pods</dd>
+      </dl>
+    </div>
+  </div>
+
+  <!-- Karpenter Scaling Flow + kubectl cheatsheet -->
+  <div class="grid2">
+    <div class="info-card">
+      <h3 class="sec">Karpenter / NAP Scaling Flow</h3>
+      <ol class="steps">
+        <li>
+          <span class="n">1</span>
+          <span><strong>Pending pod detected</strong> — scheduler cannot place pod; no node has capacity or matches constraints</span>
+        </li>
+        <li>
+          <span class="n">2</span>
+          <span><strong>Karpenter evaluates NodePool CRD</strong> — checks requirements (instance type, zone, arch, capacity type)</span>
+        </li>
+        <li>
+          <span class="n">3</span>
+          <span><strong>AKSNodeClass resolved</strong> — determines OS image, disk size, subnet, and labels for new node</span>
+        </li>
+        <li>
+          <span class="n">4</span>
+          <span><strong>Node provisioned</strong> — Azure VM starts, joins cluster via kubelet, node becomes Ready</span>
+        </li>
+        <li>
+          <span class="n">5</span>
+          <span><strong>Pod scheduled &amp; running</strong> — scheduler places pod on the new node; workload is live</span>
+        </li>
+        <li>
+          <span class="n">6</span>
+          <span><strong>Idle detection</strong> — Karpenter monitors node utilisation; empty or underutilised node identified</span>
+        </li>
+        <li>
+          <span class="n">7</span>
+          <span><strong>Consolidation / removal</strong> — pods drained, node cordoned, VM deleted; cluster right-sized automatically</span>
+        </li>
+      </ol>
+    </div>
+
+    <div class="info-card">
+      <h3 class="dep">kubectl Cheatsheet</h3>
+      <dl class="kv">
+        <dt>Get kubeconfig</dt>
+        <dd><code>az aks get-credentials --name mi-5-aks --resource-group mi-rg-aks</code></dd>
+        <dt>List nodes</dt>
+        <dd><code>kubectl get nodes -o wide</code></dd>
+        <dt>Watch nodes live</dt>
+        <dd><code>kubectl get nodes -w</code></dd>
+        <dt>List NodePools (Karpenter)</dt>
+        <dd><code>kubectl get nodepools</code></dd>
+        <dt>Describe NodePool</dt>
+        <dd><code>kubectl describe nodepool default</code></dd>
+        <dt>List AKSNodeClasses</dt>
+        <dd><code>kubectl get aksnodeclasses</code></dd>
+        <dt>Trigger scale-up</dt>
+        <dd><code>kubectl scale deploy nginx --replicas=10</code></dd>
+        <dt>Trigger scale-down</dt>
+        <dd><code>kubectl scale deploy nginx --replicas=0</code></dd>
+        <dt>Watch pods</dt>
+        <dd><code>kubectl get pods -o wide -w</code></dd>
+        <dt>Karpenter logs</dt>
+        <dd><code>kubectl logs -n kube-system -l app=karpenter -f</code></dd>
+        <dt>Apply manifests</dt>
+        <dd><code>kubectl apply -f manifests/</code></dd>
+      </dl>
+    </div>
+  </div>
+
+  <!-- Key concepts -->
+  <div class="grid3">
+    <div class="info-card">
+      <h3 class="azure">Azure CNI Overlay</h3>
+      <dl class="kv">
+        <dt>What it solves</dt>
+        <dd>Classic Azure CNI assigns one VNet IP per pod — exhausts subnets at scale. Overlay decouples pod IPs from VNet.</dd>
+        <dt>How it works</dt>
+        <dd>Pods get IPs from a private pod CIDR (192.168.0.0/16). Traffic is encapsulated at the host and routed through the node's VNet NIC.</dd>
+        <dt>Node IPs</dt>
+        <dd>Only nodes consume VNet IP space (10.10.1.x). Pods are invisible to the VNet.</dd>
+        <dt>Scale headroom</dt>
+        <dd>65 536 pod IPs available without changing VNet addressing.</dd>
+      </dl>
+    </div>
+
+    <div class="info-card">
+      <h3 class="k8s">NAP vs. Cluster Autoscaler</h3>
+      <dl class="kv">
+        <dt>Cluster Autoscaler</dt>
+        <dd>Scales pre-defined node pools up/down. You must define instance types and pool sizes in advance.</dd>
+        <dt>NAP / Karpenter</dt>
+        <dd>Just-in-time node provisioning. Karpenter picks the optimal instance type per workload request automatically.</dd>
+        <dt>NodePool CRD</dt>
+        <dd>Replaces static node pool definitions. Declare constraints; Karpenter decides the VM.</dd>
+        <dt>Cost efficiency</dt>
+        <dd>Bin-packing + spot support + rapid scale-down = lower cloud bill vs. Cluster Autoscaler.</dd>
+      </dl>
+    </div>
+
+    <div class="info-card">
+      <h3 class="sec">Workload Identity</h3>
+      <dl class="kv">
+        <dt>Problem solved</dt>
+        <dd>Pods need Azure credentials (Key Vault, Storage, etc.) without storing secrets in-cluster.</dd>
+        <dt>OIDC Issuer</dt>
+        <dd>AKS exposes an OIDC endpoint. Azure AD trusts tokens signed by this issuer.</dd>
+        <dt>Federation</dt>
+        <dd>A Kubernetes ServiceAccount annotated with a Managed Identity client ID can exchange its token for an Azure AD token.</dd>
+        <dt>Result</dt>
+        <dd>Pods call Azure APIs with zero secrets — identity flows from pod SA → Azure AD → resource.</dd>
+      </dl>
+    </div>
+  </div>
+
+  <footer>Azure Networking Lab · 5-aks-karpenter · Terraform · May 2026</footer>
+</div>
+
+</body>
+</html>
