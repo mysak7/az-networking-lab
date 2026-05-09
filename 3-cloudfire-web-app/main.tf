@@ -5,7 +5,7 @@ resource "random_string" "suffix" {
 }
 
 locals {
-  app_name = "${var.prefix}-cloudfire-${random_string.suffix.result}"
+  app_name = "${var.prefix}-3-cloudfire-${random_string.suffix.result}"
   fqdn     = "${var.subdomain}.${var.root_domain}"
 
   # Cloudflare published IP ranges — https://www.cloudflare.com/ips/
@@ -37,12 +37,12 @@ locals {
 }
 
 resource "azurerm_resource_group" "rg" {
-  name     = "${var.prefix}-cloudfire-rg"
+  name     = "${var.prefix}-3-cloudfire-rg"
   location = var.location
 }
 
 resource "azurerm_service_plan" "plan" {
-  name                = "${var.prefix}-cloudfire-plan"
+  name                = "${var.prefix}-3-cloudfire-plan"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   os_type             = "Linux"
