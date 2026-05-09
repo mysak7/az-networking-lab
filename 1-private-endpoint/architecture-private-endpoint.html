@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>az-networking-lab — Private Endpoint Architecture</title>
+<style>
+  :root {
+    --azure-blue: #0078d4;
+    --azure-dark: #004578;
+    --azure-light: #deecf9;
+    --azure-teal: #008272;
+    --azure-purple: #5c2d91;
+    --azure-orange: #ca5010;
+    --bg: #f3f4f6;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+  }
+
+  header {
+    background: linear-gradient(135deg, #004578 0%, #008272 60%, #00a693 100%);
+    color: #fff;
+    padding: 3rem 2rem 2.5rem;
+    text-align: center;
+  }
+  header .badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 99px;
+    padding: 0.25rem 0.9rem;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+  }
+  header h1 { font-size: 2.4rem; font-weight: 700; letter-spacing: -0.02em; }
+  header p  { margin-top: 0.6rem; opacity: 0.85; font-size: 1.05rem; max-width: 620px; margin-inline: auto; }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+
+  section { margin-bottom: 2.5rem; }
+  h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--azure-dark);
+    margin-bottom: 1.2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  h2::before {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 1.1em;
+    background: var(--azure-teal);
+    border-radius: 2px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+
+  .diagram-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 2rem 1.5rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    overflow-x: auto;
+  }
+  svg.diagram { display: block; margin: 0 auto; max-width: 100%; }
+
+  .resource-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+  .resource-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.1rem 1.2rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.9rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+  .resource-card .icon {
+    width: 38px; height: 38px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem; flex-shrink: 0;
+  }
+  .resource-card .icon.blue   { background: #dbeafe; }
+  .resource-card .icon.teal   { background: #d1fae5; }
+  .resource-card .icon.purple { background: #ede9fe; }
+  .resource-card .icon.orange { background: #ffedd5; }
+  .resource-card h3 { font-size: 0.9rem; font-weight: 600; color: var(--azure-dark); }
+  .resource-card p  { font-size: 0.8rem; color: var(--muted); margin-top: 0.2rem; }
+  .resource-card code {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.72rem; background: #f3f4f6;
+    padding: 0.1rem 0.35rem; border-radius: 4px;
+    color: var(--azure-orange); display: inline-block; margin-top: 0.35rem;
+  }
+
+  .flow {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.5rem 1.8rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .flow + .flow { margin-top: 1rem; }
+  .flow-label {
+    width: 100%; font-size: 0.75rem; font-weight: 700;
+    color: var(--azure-teal); text-transform: uppercase;
+    letter-spacing: 0.07em; margin-bottom: 1rem;
+  }
+  .flow-step { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 90px; }
+  .flow-step .bubble {
+    width: 56px; height: 56px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; border: 2px solid var(--border); background: #f9fafb;
+  }
+  .flow-step .lbl { font-size: 0.72rem; font-weight: 600; color: var(--azure-dark); margin-top: 0.4rem; max-width: 80px; }
+  .flow-step .sub { font-size: 0.65rem; color: var(--muted); max-width: 80px; }
+  .flow-arrow { flex: 1; min-width: 24px; display: flex; align-items: center; justify-content: center; padding-bottom: 1.4rem; }
+  .flow-arrow svg { width: 32px; height: 14px; }
+
+  .dns-explainer {
+    background: linear-gradient(90deg, #d1fae5 0%, #f0fdf4 100%);
+    border: 1px solid #6ee7b7;
+    border-radius: 12px;
+    padding: 1.4rem 1.5rem;
+  }
+  .dns-explainer h3 { font-size: 1rem; font-weight: 700; color: var(--azure-teal); margin-bottom: 0.8rem; }
+  .dns-steps { display: flex; flex-direction: column; gap: 0.5rem; }
+  .dns-step {
+    display: flex; align-items: flex-start; gap: 0.8rem;
+    background: #fff; border: 1px solid #a7f3d0; border-radius: 8px; padding: 0.65rem 0.9rem;
+  }
+  .dns-step .num {
+    background: var(--azure-teal); color: #fff; border-radius: 50%;
+    width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    font-size: 0.72rem; font-weight: 700; flex-shrink: 0; margin-top: 1px;
+  }
+  .dns-step p { font-size: 0.83rem; color: #1f2937; }
+  .dns-step code {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.78rem; background: #f0fdf4;
+    padding: 0.1rem 0.35rem; border-radius: 4px; color: var(--azure-teal);
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+  th { background: var(--azure-light); color: var(--azure-dark); font-weight: 600; text-align: left; padding: 0.65rem 1rem; border-bottom: 2px solid var(--azure-blue); }
+  td { padding: 0.6rem 1rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #f9fafb; }
+  td code { font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 0.8rem; background: #f3f4f6; padding: 0.1rem 0.35rem; border-radius: 4px; color: var(--azure-orange); }
+
+  .outputs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.8rem; }
+  .output-pill { background: var(--azure-light); border: 1px solid #b3d4f0; border-radius: 8px; padding: 0.8rem 1rem; }
+  .output-pill .name { font-size: 0.78rem; font-weight: 700; color: var(--azure-dark); }
+  .output-pill .desc { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+  .output-pill.sensitive { background: #fff7ed; border-color: #fed7aa; }
+  .output-pill.sensitive .name { color: var(--azure-orange); }
+
+  footer { text-align: center; font-size: 0.78rem; color: var(--muted); padding: 1.5rem; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="badge">Terraform · Azure · Private Link</div>
+  <h1>az-networking-lab — Private Endpoint</h1>
+  <p>Storage accessed exclusively via private IP inside the VNet — no public endpoint, Private Link DNS resolution, dedicated PE subnet.</p>
+</header>
+
+<main>
+
+<!-- ═══ ARCHITECTURE DIAGRAM ═══ -->
+<section>
+  <h2>Architecture Diagram</h2>
+  <div class="diagram-wrap">
+    <svg class="diagram" viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Private endpoint architecture diagram">
+      <defs>
+        <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#94a3b8"/>
+        </marker>
+        <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#0078d4"/>
+        </marker>
+        <marker id="arr-teal" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L8,3 z" fill="#008272"/>
+        </marker>
+        <marker id="arr-teal-s" markerWidth="8" markerHeight="8" refX="2" refY="3" orient="auto">
+          <path d="M8,0 L8,6 L0,3 z" fill="#008272"/>
+        </marker>
+      </defs>
+
+      <!-- ── Azure Subscription ── -->
+      <rect x="10" y="10" width="940" height="540" rx="14" fill="#f0f6ff" stroke="#0078d4" stroke-width="1.5" stroke-dasharray="6 4"/>
+      <text x="26" y="27" font-size="11" fill="#0078d4" font-weight="700" font-family="Segoe UI,sans-serif">Azure Subscription</text>
+
+      <!-- ── Internet (top-right, above RG) ── -->
+      <ellipse cx="905" cy="35" rx="42" ry="20" fill="#e0f2fe" stroke="#38bdf8" stroke-width="1.5"/>
+      <text x="905" y="32" font-size="9" text-anchor="middle" font-family="Segoe UI,sans-serif">🌍</text>
+      <text x="905" y="44" font-size="9" text-anchor="middle" fill="#0369a1" font-weight="600" font-family="Segoe UI,sans-serif">Internet</text>
+
+      <!-- ── Resource Group ── -->
+      <rect x="30" y="50" width="680" height="500" rx="10" fill="#fff" stroke="#50a0e8" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="48" y="70" font-size="11" fill="#004578" font-weight="700" font-family="Segoe UI,sans-serif">Resource Group: mi-learn-net-rg  (East US 2)</text>
+
+      <!-- ── VNet ── -->
+      <rect x="50" y="82" width="520" height="295" rx="8" fill="#f0f9ff" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <text x="66" y="97" font-size="10.5" fill="#0369a1" font-weight="600" font-family="Segoe UI,sans-serif">Virtual Network: 10.0.0.0/16</text>
+
+      <!-- ── VM Subnet ── -->
+      <rect x="68" y="110" width="235" height="255" rx="6" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>
+      <text x="82" y="125" font-size="9.5" fill="#0369a1" font-family="Segoe UI,sans-serif">VM Subnet: 10.0.1.0/24</text>
+
+      <!-- NSG -->
+      <rect x="84" y="140" width="120" height="44" rx="6" fill="#fff" stroke="#0078d4" stroke-width="1.5"/>
+      <text x="104" y="159" font-size="10" fill="#0078d4" font-weight="700" font-family="Segoe UI,sans-serif">🛡 NSG</text>
+      <text x="89" y="173" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">SSH :22 Allow · Deny all</text>
+
+      <!-- NIC -->
+      <rect x="84" y="200" width="90" height="44" rx="6" fill="#fff" stroke="#0078d4" stroke-width="1.5"/>
+      <text x="104" y="219" font-size="10" fill="#0078d4" font-weight="700" font-family="Segoe UI,sans-serif">🔌 NIC</text>
+      <text x="89" y="233" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">Private IP: dynamic</text>
+
+      <!-- Public IP -->
+      <rect x="188" y="200" width="107" height="44" rx="6" fill="#fff" stroke="#0078d4" stroke-width="1.5"/>
+      <text x="205" y="219" font-size="10" fill="#0078d4" font-weight="700" font-family="Segoe UI,sans-serif">🌐 Public IP</text>
+      <text x="193" y="233" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">Static · Standard SKU</text>
+
+      <!-- NIC ↔ Public IP association -->
+      <line x1="174" y1="222" x2="188" y2="222" stroke="#0078d4" stroke-width="1.2" stroke-dasharray="3 2"/>
+
+      <!-- NSG → NIC -->
+      <line x1="144" y1="184" x2="144" y2="200" stroke="#0078d4" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+
+      <!-- VM -->
+      <rect x="84" y="260" width="210" height="80" rx="6" fill="#0078d4" stroke="none"/>
+      <text x="152" y="282" font-size="11" fill="#fff" font-weight="700" font-family="Segoe UI,sans-serif">🖥 Linux VM</text>
+      <text x="94" y="297" font-size="9" fill="#bfdbfe" font-family="Segoe UI,sans-serif">Ubuntu 22.04 · Standard_B2s_v2</text>
+      <text x="94" y="310" font-size="9" fill="#bfdbfe" font-family="Segoe UI,sans-serif">SSH key auth · azureuser</text>
+      <text x="94" y="323" font-size="9" fill="#bfdbfe" font-family="Segoe UI,sans-serif">Boot diag → Storage (AzureServices)</text>
+
+      <!-- NIC → VM -->
+      <line x1="129" y1="244" x2="129" y2="260" stroke="#0078d4" stroke-width="1.5" marker-end="url(#arr-blue)"/>
+
+      <!-- ── PE Subnet ── -->
+      <rect x="323" y="110" width="225" height="255" rx="6" fill="#f5f3ff" stroke="#a78bfa" stroke-width="1"/>
+      <text x="337" y="125" font-size="9.5" fill="#6d28d9" font-family="Segoe UI,sans-serif">PE Subnet: 10.0.2.0/24</text>
+
+      <!-- Private Endpoint box -->
+      <rect x="339" y="138" width="193" height="92" rx="6" fill="#fff" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="395" y="158" font-size="10" fill="#5c2d91" font-weight="700" font-family="Segoe UI,sans-serif">🔒 Private Endpoint</text>
+      <text x="349" y="172" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">NIC private IP: 10.0.2.x</text>
+      <text x="349" y="185" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">Subresource: blob</text>
+      <text x="349" y="198" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">No public endpoint reachable</text>
+      <text x="349" y="220" font-size="8" fill="#7c3aed" font-style="italic" font-family="Segoe UI,sans-serif">DNS resolves storage FQDN → 10.0.2.x</text>
+
+      <!-- ── SSH arrow: Internet → Public IP (routed above VNet) ── -->
+      <!-- Goes: Internet(865,35) → left at y=35 → down at x=294 → into PubIP top -->
+      <path d="M863,35 L294,35 L294,200" stroke="#0078d4" stroke-width="1.5" fill="none" marker-end="url(#arr-blue)"/>
+      <text x="580" y="28" font-size="9" fill="#0078d4" text-anchor="middle" font-family="Segoe UI,sans-serif">SSH TCP 22</text>
+
+      <!-- ── VM → PE storage traffic (through gap between subnets) ── -->
+      <path d="M294,298 L316,298 L316,185 L339,185" stroke="#008272" stroke-width="1.5" fill="none" marker-end="url(#arr-teal)"/>
+      <text x="322" y="244" font-size="8" fill="#008272" font-family="Segoe UI,sans-serif" text-anchor="middle" transform="rotate(-90,322,244)">storage traffic</text>
+
+      <!-- ── Below VNet: Storage, DNS Zone, VNet Link ── -->
+
+      <!-- Storage Account -->
+      <rect x="55" y="398" width="150" height="65" rx="6" fill="#fff" stroke="#008272" stroke-width="1.5"/>
+      <text x="85" y="418" font-size="10" fill="#008272" font-weight="700" font-family="Segoe UI,sans-serif">💾 Storage</text>
+      <text x="63" y="432" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">Standard LRS</text>
+      <text x="63" y="444" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">default_action: Deny</text>
+      <text x="63" y="456" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">bypass: AzureServices</text>
+
+      <!-- Private DNS Zone -->
+      <rect x="222" y="398" width="178" height="65" rx="6" fill="#fff" stroke="#7c3aed" stroke-width="1.5"/>
+      <text x="256" y="418" font-size="10" fill="#5c2d91" font-weight="700" font-family="Segoe UI,sans-serif">🔍 Private DNS Zone</text>
+      <text x="230" y="432" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">privatelink.blob.core.windows.net</text>
+      <text x="230" y="444" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">A record → 10.0.2.x</text>
+      <text x="230" y="456" font-size="8.5" fill="#7c3aed" font-style="italic" font-family="Segoe UI,sans-serif">registered by PE automatically</text>
+
+      <!-- DNS VNet Link -->
+      <rect x="416" y="398" width="138" height="65" rx="6" fill="#fff" stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="4 2"/>
+      <text x="450" y="418" font-size="10" fill="#5c2d91" font-weight="700" font-family="Segoe UI,sans-serif">🔗 VNet Link</text>
+      <text x="424" y="432" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">Links DNS zone to VNet</text>
+      <text x="424" y="444" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">registration: false</text>
+      <text x="424" y="456" font-size="8.5" fill="#475569" font-family="Segoe UI,sans-serif">Enables private resolution</text>
+
+      <!-- PE → Storage arrow -->
+      <path d="M435,230 L435,378 L130,378 L130,398" stroke="#008272" stroke-width="1.5" fill="none" marker-end="url(#arr-teal)"/>
+      <text x="283" y="373" font-size="8" fill="#008272" text-anchor="middle" font-family="Segoe UI,sans-serif">private access only</text>
+
+      <!-- VM → DNS Zone (query) -->
+      <path d="M189,340 L189,378 L311,378 L311,398" stroke="#94a3b8" stroke-width="1.2" fill="none" stroke-dasharray="4 2" marker-end="url(#arr)"/>
+      <text x="253" y="388" font-size="8" fill="#6b7280" text-anchor="middle" font-family="Segoe UI,sans-serif">DNS query</text>
+
+      <!-- VNet Link → VNet boundary (upward link) -->
+      <line x1="485" y1="398" x2="485" y2="378" stroke="#7c3aed" stroke-width="1.2" stroke-dasharray="3 2"/>
+      <text x="497" y="390" font-size="7.5" fill="#7c3aed" font-family="Segoe UI,sans-serif">linked</text>
+
+      <!-- ── Azure AD box ── -->
+      <rect x="718" y="290" width="185" height="175" rx="10" fill="#f5f3ff" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="5 3"/>
+      <text x="764" y="308" font-size="10.5" fill="#5c2d91" font-weight="700" text-anchor="middle" font-family="Segoe UI,sans-serif">Azure AD</text>
+
+      <rect x="730" y="316" width="160" height="36" rx="5" fill="#fff" stroke="#c4b5fd" stroke-width="1"/>
+      <text x="740" y="331" font-size="9.5" fill="#5c2d91" font-weight="600" font-family="Segoe UI,sans-serif">📋 AAD Application</text>
+      <text x="740" y="344" font-size="8.5" fill="#6b7280" font-family="Segoe UI,sans-serif">mi-learn-app</text>
+
+      <rect x="730" y="362" width="160" height="36" rx="5" fill="#fff" stroke="#c4b5fd" stroke-width="1"/>
+      <text x="740" y="377" font-size="9.5" fill="#5c2d91" font-weight="600" font-family="Segoe UI,sans-serif">👤 Service Principal</text>
+      <text x="740" y="390" font-size="8.5" fill="#6b7280" font-family="Segoe UI,sans-serif">+ client secret</text>
+
+      <rect x="730" y="408" width="160" height="36" rx="5" fill="#fff" stroke="#c4b5fd" stroke-width="1"/>
+      <text x="740" y="423" font-size="9.5" fill="#5c2d91" font-weight="600" font-family="Segoe UI,sans-serif">🔑 Role Assignment</text>
+      <text x="740" y="436" font-size="8.5" fill="#6b7280" font-family="Segoe UI,sans-serif">Contributor → RG scope</text>
+
+      <line x1="810" y1="352" x2="810" y2="362" stroke="#8b5cf6" stroke-width="1.2" marker-end="url(#arr)"/>
+      <line x1="810" y1="398" x2="810" y2="408" stroke="#8b5cf6" stroke-width="1.2" marker-end="url(#arr)"/>
+    </svg>
+  </div>
+</section>
+
+<!-- ═══ TRAFFIC FLOWS ═══ -->
+<section>
+  <h2>Traffic Flows</h2>
+
+  <div class="flow">
+    <div class="flow-label">Flow 1 — SSH Access (inbound)</div>
+    <div class="flow-step">
+      <div class="bubble">🧑‍💻</div>
+      <div class="lbl">Developer</div>
+      <div class="sub">Your machine</div>
+    </div>
+    <div class="flow-arrow"><svg viewBox="0 0 32 14"><path d="M0,7 H28" stroke="#94a3b8" stroke-width="2" fill="none"/><polygon points="24,3 32,7 24,11" fill="#94a3b8"/></svg></div>
+    <div class="flow-step">
+      <div class="bubble">🌍</div>
+      <div class="lbl">Internet</div>
+      <div class="sub">TCP 22</div>
+    </div>
+    <div class="flow-arrow"><svg viewBox="0 0 32 14"><path d="M0,7 H28" stroke="#94a3b8" stroke-width="2" fill="none"/><polygon points="24,3 32,7 24,11" fill="#94a3b8"/></svg></div>
+    <div class="flow-step">
+      <div class="bubble">🌐</div>
+      <div class="lbl">Public IP</div>
+      <div class="sub">Static Standard</div>
+    </div>
+    <div class="flow-arrow"><svg viewBox="0 0 32 14"><path d="M0,7 H28" stroke="#94a3b8" stroke-width="2" fill="none"/><polygon points="24,3 32,7 24,11" fill="#94a3b8"/></svg></div>
+    <div class="flow-step">
+      <div class="bubble">🛡</div>
+      <div class="lbl">NSG</div>
+      <div class="sub">Allow :22</div>
+    </div>
+    <div class="flow-arrow"><svg viewBox="0 0 32 14"><path d="M0,7 H28" stroke="#94a3b8" stroke-width="2" fill="none"/><polygon points="24,3 32,7 24,11" fill="#94a3b8"/></svg></div>
+    <div class="flow-step">
+      <div class="bubble">🔌</div>
+      <div class="lbl">NIC</div>
+      <div class="sub">Private IP</div>
+    </div>
+    <div class="flow-arrow"><svg viewBox="0 0 32 14"><path d="M0,7 H28" stroke="#94a3b8" stroke-width="2" fill="none"/><polygon points="24,3 32,7 24,11" fill="#94a3b8"/></svg></div>
+    <div class="flow-step">
+      <div class="bubble">🖥</div>
+      <div class="lbl">Linux VM</div>
+      <div class="sub">Ubuntu 22.04</div>
+    </div>
+  </div>
+
+  <div class="flow" style="margin-top:1rem">
+    <div class="flow-label">Flow 2 — Storage Access via Private Endpoint</div>
+    <div class="flow-step">
+      <div class="bubble">🖥</div>
+      <div class="lbl">Linux VM</div>
+      <div class="sub">nslookup / curl</div>
+    </div>
+    <div class="flow-arrow"><svg viewBox="0 0 32 14"><path d="M0,7 H28" stroke="#008272" stroke-width="2" stroke-dasharray="4 2" fill="none"/><polygon points="24,3 32,7 24,11" fill="#008272"/></svg></div>
+    <div class="flow-step">
+      <div class="bubble">🔍</div>
+      <div class="lbl">Private DNS</div>
+      <div class="sub">DNS query</div>
+    </div>
+    <div class="flow-arrow"><svg viewBox="0 0 32 14"><path d="M0,7 H28" stroke="#008272" stroke-width="2" stroke-dasharray="4 2" fill="none"/><polygon points="24,3 32,7 24,11" fill="#008272"/></svg></div>
+    <div class="flow-step">
+      <div class="bubble">📍</div>
+      <div class="lbl">Resolves</div>
+      <div class="sub">→ 10.0.2.x</div>
+    </div>
+    <div class="flow-arrow"><svg viewBox="0 0 32 14"><path d="M0,7 H28" stroke="#008272" stroke-width="2" fill="none"/><polygon points="24,3 32,7 24,11" fill="#008272"/></svg></div>
+    <div class="flow-step">
+      <div class="bubble">🔒</div>
+      <div class="lbl">Private EP</div>
+      <div class="sub">PE Subnet</div>
+    </div>
+    <div class="flow-arrow"><svg viewBox="0 0 32 14"><path d="M0,7 H28" stroke="#008272" stroke-width="2" fill="none"/><polygon points="24,3 32,7 24,11" fill="#008272"/></svg></div>
+    <div class="flow-step">
+      <div class="bubble">💾</div>
+      <div class="lbl">Storage</div>
+      <div class="sub">Private only</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ HOW PRIVATE DNS WORKS ═══ -->
+<section>
+  <h2>How Private DNS Resolution Works</h2>
+  <div class="dns-explainer">
+    <h3>nslookup &lt;storage&gt;.blob.core.windows.net from inside the VM</h3>
+    <div class="dns-steps">
+      <div class="dns-step">
+        <div class="num">1</div>
+        <p>VM queries Azure DNS (<code>168.63.129.16</code>) for <code>mystorageacct.blob.core.windows.net</code>.</p>
+      </div>
+      <div class="dns-step">
+        <div class="num">2</div>
+        <p>Azure DNS sees a CNAME: <code>mystorageacct.blob.core.windows.net → mystorageacct.privatelink.blob.core.windows.net</code>.</p>
+      </div>
+      <div class="dns-step">
+        <div class="num">3</div>
+        <p>The Private DNS Zone <code>privatelink.blob.core.windows.net</code> is linked to this VNet via VNet Link, so Azure DNS consults it.</p>
+      </div>
+      <div class="dns-step">
+        <div class="num">4</div>
+        <p>The zone has an A record (auto-registered by the private endpoint): <code>mystorageacct → 10.0.2.x</code>. Returns the private IP.</p>
+      </div>
+      <div class="dns-step">
+        <div class="num">5</div>
+        <p>VM opens a TCP connection to <code>10.0.2.x</code> — the PE NIC inside the PE Subnet. Traffic never leaves the VNet. Storage's public endpoint is unreachable.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ RESOURCES ═══ -->
+<section>
+  <h2>Resources</h2>
+  <div class="resource-grid">
+
+    <div class="resource-card">
+      <div class="icon blue">📦</div>
+      <div>
+        <h3>Resource Group</h3>
+        <p>Logical container for all lab resources.</p>
+        <code>mi-learn-net-rg · East US 2</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon blue">🔗</div>
+      <div>
+        <h3>Virtual Network</h3>
+        <p>Isolated network with two subnets — one for the VM, one dedicated to the private endpoint.</p>
+        <code>10.0.0.0/16</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon blue">🧩</div>
+      <div>
+        <h3>VM Subnet</h3>
+        <p>Hosts the NIC and VM. No service endpoints — storage access goes through the PE subnet via private IP.</p>
+        <code>10.0.1.0/24</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon purple">🧩</div>
+      <div>
+        <h3>PE Subnet</h3>
+        <p>Dedicated subnet for the private endpoint. <code>private_endpoint_network_policies = Disabled</code> required.</p>
+        <code>10.0.2.0/24</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon blue">🛡</div>
+      <div>
+        <h3>Network Security Group</h3>
+        <p>Firewall rules on the VM NIC. One rule: allow inbound SSH on port 22.</p>
+        <code>Priority 1001 · SSH</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon blue">🌐</div>
+      <div>
+        <h3>Public IP</h3>
+        <p>Static Standard SKU for SSH access to the VM. Storage has no public IP exposure.</p>
+        <code>Static · Standard SKU</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon blue">🔌</div>
+      <div>
+        <h3>Network Interface</h3>
+        <p>Connects the VM to the VM subnet with a dynamic private IP and the static public IP.</p>
+        <code>Dynamic private IP</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon blue">🖥</div>
+      <div>
+        <h3>Linux Virtual Machine</h3>
+        <p>Ubuntu 22.04 LTS. SSH key auth. Boot diagnostics bypass storage via <code>AzureServices</code>.</p>
+        <code>Standard_B2s_v2 · azureuser</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon teal">💾</div>
+      <div>
+        <h3>Storage Account</h3>
+        <p>Boot diagnostics target. Public access denied. No VNet subnet rules — private endpoint is the only access path.</p>
+        <code>Standard LRS · default_action: Deny</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon purple">🔒</div>
+      <div>
+        <h3>Private Endpoint</h3>
+        <p>Creates a NIC with a private IP in the PE subnet, mapped to the storage account's blob service. Auto-registers A record in the DNS zone.</p>
+        <code>subresource: blob · 10.0.2.x</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon purple">🔍</div>
+      <div>
+        <h3>Private DNS Zone</h3>
+        <p>Overrides public DNS resolution for the storage FQDN inside the VNet. A record points to the PE's private IP.</p>
+        <code>privatelink.blob.core.windows.net</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon purple">🔗</div>
+      <div>
+        <h3>DNS Zone VNet Link</h3>
+        <p>Links the private DNS zone to the VNet so Azure DNS consults it for queries from VMs inside the VNet.</p>
+        <code>registration_enabled: false</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon purple">📋</div>
+      <div>
+        <h3>Azure AD Application</h3>
+        <p>Identity object used as the basis for the service principal.</p>
+        <code>mi-learn-app</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon purple">👤</div>
+      <div>
+        <h3>Service Principal</h3>
+        <p>App identity for authenticating against Azure APIs. Paired with a client secret.</p>
+        <code>client_id + client_secret</code>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <div class="icon purple">🔑</div>
+      <div>
+        <h3>Role Assignment</h3>
+        <p>Contributor role granted to the service principal, scoped to the resource group.</p>
+        <code>Contributor → RG scope</code>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══ VARIABLES ═══ -->
+<section>
+  <h2>Variables</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>prefix</code></td>
+          <td><code>mi</code></td>
+          <td>Prefix for all resource names. Must be lowercase alphanumeric (storage account constraint).</td>
+        </tr>
+        <tr>
+          <td><code>location</code></td>
+          <td><code>eastus2</code></td>
+          <td>Azure region. East US 2 has competitive spot pricing.</td>
+        </tr>
+        <tr>
+          <td><code>admin_username</code></td>
+          <td><code>azureuser</code></td>
+          <td>Admin username for the virtual machine.</td>
+        </tr>
+        <tr>
+          <td><code>vm_size</code></td>
+          <td><code>Standard_B2s_v2</code></td>
+          <td>2 vCPU / 4 GB RAM — available in East US 2.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══ OUTPUTS ═══ -->
+<section>
+  <h2>Terraform Outputs</h2>
+  <div class="outputs-grid">
+    <div class="output-pill">
+      <div class="name">resource_group_name</div>
+      <div class="desc">Name of the deployed resource group</div>
+    </div>
+    <div class="output-pill">
+      <div class="name">public_ip_address</div>
+      <div class="desc">Static public IP of the VM</div>
+    </div>
+    <div class="output-pill">
+      <div class="name">vm_name</div>
+      <div class="desc">Name of the Linux virtual machine</div>
+    </div>
+    <div class="output-pill">
+      <div class="name">ssh_command</div>
+      <div class="desc">Ready-to-paste SSH command</div>
+    </div>
+    <div class="output-pill sensitive">
+      <div class="name">service_principal_client_id</div>
+      <div class="desc">🔒 sensitive — use <code>-raw</code> flag</div>
+    </div>
+    <div class="output-pill sensitive">
+      <div class="name">service_principal_client_secret</div>
+      <div class="desc">🔒 sensitive — use <code>-raw</code> flag</div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ PROVIDERS ═══ -->
+<section>
+  <h2>Terraform Providers</h2>
+  <div class="resource-grid">
+    <div class="resource-card">
+      <div class="icon orange">⚙️</div>
+      <div>
+        <h3>hashicorp/azurerm</h3>
+        <p>All Azure infrastructure resources — VNet, NSG, VM, Storage, Private Endpoint, DNS Zone.</p>
+        <code>~&gt; 3.0  (locked 3.117.1)</code>
+      </div>
+    </div>
+    <div class="resource-card">
+      <div class="icon purple">⚙️</div>
+      <div>
+        <h3>hashicorp/azuread</h3>
+        <p>Azure Active Directory — application, service principal, and client secret.</p>
+        <code>~&gt; 2.0  (locked 2.53.1)</code>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  az-networking-lab &nbsp;·&nbsp; Terraform &nbsp;·&nbsp; Azure East US 2 &nbsp;·&nbsp; Private Endpoint variant
+</footer>
+
+</body>
+</html>
