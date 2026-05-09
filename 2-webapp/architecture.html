@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Azure Multi-Tier Web App Architecture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --azure-blue:    #0078d4;
+      --azure-dark:    #004578;
+      --azure-light:   #deecf9;
+      --internet-bg:   #f3f2f1;
+      --dmz-bg:        #fff4ce;
+      --app-bg:        #dff6dd;
+      --data-bg:       #e8e0f5;
+      --text:          #1b1b1b;
+      --muted:         #605e5c;
+      --border:        #d2d0ce;
+      --shadow:        0 2px 8px rgba(0,0,0,.12);
+      --radius:        8px;
+    }
+
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: #f8f8f8;
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, var(--azure-dark) 0%, var(--azure-blue) 100%);
+      color: #fff;
+      padding: 2.5rem 3rem;
+    }
+    header h1 { font-size: 1.9rem; font-weight: 700; letter-spacing: -.5px; }
+    header p  { margin-top: .5rem; opacity: .85; font-size: .95rem; }
+    .badge-row { display: flex; gap: .6rem; margin-top: 1rem; flex-wrap: wrap; }
+    .badge {
+      background: rgba(255,255,255,.18);
+      border: 1px solid rgba(255,255,255,.35);
+      border-radius: 20px;
+      padding: .2rem .75rem;
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .3px;
+    }
+
+    /* ── Layout ── */
+    main { max-width: 1280px; margin: 0 auto; padding: 2rem 2rem 4rem; }
+
+    /* ── Section headings ── */
+    h2 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--azure-dark);
+      border-left: 4px solid var(--azure-blue);
+      padding-left: .7rem;
+      margin: 2.5rem 0 1rem;
+    }
+
+    /* ── Diagram ── */
+    .diagram-wrap {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 2rem;
+      overflow-x: auto;
+    }
+
+    .diagram {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+      min-width: 680px;
+    }
+
+    /* zones */
+    .zone {
+      width: 100%;
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      position: relative;
+    }
+    .zone-label {
+      font-size: .7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: .65;
+      margin-bottom: .6rem;
+    }
+    .zone-internet { background: var(--internet-bg); }
+    .zone-vnet {
+      background: transparent;
+      border: 2px dashed var(--azure-blue);
+      margin-top: .3rem;
+    }
+    .vnet-label {
+      position: absolute;
+      top: -11px; left: 14px;
+      background: #fff;
+      padding: 0 .5rem;
+      font-size: .72rem;
+      font-weight: 700;
+      color: var(--azure-blue);
+      letter-spacing: .5px;
+    }
+    .zone-dmz   { background: var(--dmz-bg);  border-radius: 6px; padding: .9rem 1rem; }
+    .zone-app   { background: var(--app-bg);  border-radius: 6px; padding: .9rem 1rem; margin-top: .6rem; }
+    .zone-data  { background: var(--data-bg); border-radius: 6px; padding: .9rem 1rem; margin-top: .6rem; }
+
+    /* rows inside zones */
+    .row { display: flex; justify-content: center; align-items: stretch; gap: 1.2rem; flex-wrap: wrap; }
+
+    /* resource boxes */
+    .box {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .8rem 1.1rem;
+      min-width: 180px;
+      max-width: 220px;
+      flex: 1;
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+      transition: box-shadow .15s;
+    }
+    .box:hover { box-shadow: 0 4px 16px rgba(0,120,212,.18); }
+
+    .box-icon  { font-size: 1.6rem; display: block; margin-bottom: .3rem; }
+    .box-title { font-weight: 700; font-size: .88rem; color: var(--text); }
+    .box-sub   { font-size: .76rem; color: var(--muted); margin-top: .15rem; }
+    .box-tags  { display: flex; gap: .35rem; flex-wrap: wrap; margin-top: .5rem; }
+    .tag {
+      font-size: .68rem;
+      font-weight: 600;
+      padding: .1rem .45rem;
+      border-radius: 4px;
+      background: var(--azure-light);
+      color: var(--azure-dark);
+    }
+    .tag.warn  { background: #fff4ce; color: #8a6914; }
+    .tag.green { background: #dff6dd; color: #107c10; }
+    .tag.red   { background: #fde7e9; color: #a80000; }
+    .tag.purple{ background: #e8e0f5; color: #5c2d91; }
+
+    /* arrows */
+    .arrow-down {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: .3rem 0;
+      color: var(--azure-blue);
+      font-size: .73rem;
+      font-weight: 600;
+      gap: .1rem;
+    }
+    .arrow-down span { color: var(--muted); }
+    .arrow-line {
+      width: 2px;
+      height: 22px;
+      background: var(--azure-blue);
+    }
+    .arrow-head {
+      width: 0;
+      height: 0;
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 8px solid var(--azure-blue);
+    }
+
+    .arrow-lateral {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      color: var(--azure-blue);
+      font-size: .73rem;
+      font-weight: 600;
+      margin: 0 .3rem;
+    }
+    .arrow-lateral .line {
+      width: 28px;
+      height: 2px;
+      background: var(--azure-blue);
+      position: relative;
+    }
+    .arrow-lateral .line::after {
+      content: '';
+      position: absolute;
+      right: -1px; top: -4px;
+      border-top: 5px solid transparent;
+      border-bottom: 5px solid transparent;
+      border-left: 7px solid var(--azure-blue);
+    }
+
+    /* ── Subnet table ── */
+    .subnet-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    .subnet-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem;
+      box-shadow: var(--shadow);
+    }
+    .subnet-card h3 { font-size: .9rem; font-weight: 700; color: var(--azure-blue); margin-bottom: .4rem; }
+    .subnet-card p  { font-size: .8rem; color: var(--muted); margin-top: .2rem; }
+    .cidr { font-family: monospace; font-size: .82rem; color: var(--text); }
+
+    /* ── Security table ── */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .85rem;
+      background: #fff;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    thead th {
+      background: var(--azure-dark);
+      color: #fff;
+      padding: .7rem 1rem;
+      text-align: left;
+      font-weight: 600;
+      font-size: .82rem;
+    }
+    tbody tr:nth-child(even) { background: #f5f5f5; }
+    tbody td { padding: .65rem 1rem; border-bottom: 1px solid #eee; vertical-align: top; }
+    tbody tr:last-child td { border-bottom: none; }
+    .allow { color: #107c10; font-weight: 700; }
+    .deny  { color: #a80000; font-weight: 700; }
+    code { font-family: monospace; background: #f0f0f0; padding: .1rem .3rem; border-radius: 3px; font-size: .82rem; }
+
+    /* ── Traffic flow ── */
+    .flow-list {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.2rem 1.5rem;
+      counter-reset: flow;
+    }
+    .flow-step {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      padding: .7rem 0;
+      border-bottom: 1px solid #eee;
+    }
+    .flow-step:last-child { border-bottom: none; }
+    .flow-num {
+      flex-shrink: 0;
+      width: 1.8rem; height: 1.8rem;
+      background: var(--azure-blue);
+      color: #fff;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: .8rem;
+    }
+    .flow-text strong { font-size: .9rem; }
+    .flow-text p { font-size: .82rem; color: var(--muted); margin-top: .15rem; }
+
+    /* ── Identity card ── */
+    .identity-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    .identity-card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1rem 1.2rem;
+      box-shadow: var(--shadow);
+    }
+    .identity-card h3 { font-size: .88rem; font-weight: 700; color: var(--azure-dark); margin-bottom: .5rem; }
+    .identity-card li { font-size: .82rem; color: var(--muted); margin-left: 1.2rem; margin-top: .2rem; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      font-size: .78rem;
+      color: var(--muted);
+      padding: 2rem;
+      border-top: 1px solid var(--border);
+      margin-top: 3rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Azure Multi-Tier Web App Architecture</h1>
+  <p>WAF · App Services · Storage Account · Key Vault · Private Endpoints · Managed Identity</p>
+  <div class="badge-row">
+    <span class="badge">Region: East US 2</span>
+    <span class="badge">VNet: 10.0.0.0/16</span>
+    <span class="badge">App Service S1 (Linux)</span>
+    <span class="badge">WAF v2 — OWASP 3.2 Prevention</span>
+    <span class="badge">TLS 1.2+</span>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Diagram ── -->
+  <h2>Architecture Diagram</h2>
+  <div class="diagram-wrap">
+    <div class="diagram">
+
+      <!-- Internet -->
+      <div class="zone zone-internet" style="text-align:center; padding:.9rem 1rem;">
+        <div class="zone-label">Public Internet</div>
+        <div class="row">
+          <div class="box" style="max-width:200px; text-align:left;">
+            <span class="box-icon">🌐</span>
+            <div class="box-title">Client Browser</div>
+            <div class="box-sub">HTTP :80 inbound</div>
+            <div class="box-tags">
+              <span class="tag">Any source IP</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="arrow-down">
+        <div class="arrow-line"></div>
+        <div class="arrow-head"></div>
+        <span>HTTP :80</span>
+      </div>
+
+      <!-- VNet wrapper -->
+      <div class="zone zone-vnet" style="width:100%; padding: 1.2rem 1rem 1.2rem;">
+        <div class="vnet-label">Azure Virtual Network — 10.0.0.0/16</div>
+
+        <!-- DMZ / App Gateway -->
+        <div class="zone zone-dmz">
+          <div class="zone-label">DMZ — appgw-subnet 10.0.1.0/24 &nbsp;|&nbsp; NSG: Allow 80, 443, GatewayMgr 65200-65535</div>
+          <div class="row">
+            <div class="box">
+              <span class="box-icon">🛡️</span>
+              <div class="box-title">Application Gateway WAF v2</div>
+              <div class="box-sub">Static Public IP · 1 capacity unit</div>
+              <div class="box-tags">
+                <span class="tag warn">WAF Prevention</span>
+                <span class="tag">OWASP 3.2</span>
+                <span class="tag green">HTTP → HTTPS</span>
+              </div>
+            </div>
+            <div class="box">
+              <span class="box-icon">📌</span>
+              <div class="box-title">Public IP (Standard)</div>
+              <div class="box-sub">Static allocation</div>
+              <div class="box-tags">
+                <span class="tag">SKU: Standard</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow-down">
+          <div class="arrow-line"></div>
+          <div class="arrow-head"></div>
+          <span>HTTPS :443 (SNI pick-host)</span>
+        </div>
+
+        <!-- App Tier -->
+        <div class="zone zone-app">
+          <div class="zone-label">App Tier — frontend-subnet 10.0.2.0/24 &amp; backend-subnet 10.0.3.0/24 &nbsp;|&nbsp; Delegated to Microsoft.Web/serverFarms</div>
+          <div class="row">
+
+            <div class="box">
+              <span class="box-icon">🖥️</span>
+              <div class="box-title">Frontend App Service</div>
+              <div class="box-sub">Node 18 LTS · Linux S1<br/>VNet Integration: frontend-subnet</div>
+              <div class="box-tags">
+                <span class="tag red">IP Restrict: AppGW subnet only</span>
+                <span class="tag">Managed Identity</span>
+                <span class="tag green">HTTPS only</span>
+              </div>
+            </div>
+
+            <div class="arrow-lateral">
+              <div class="line"></div>
+              <span style="white-space:nowrap; font-size:.7rem;">HTTPS<br/>VNet</span>
+              <div class="line"></div>
+            </div>
+
+            <div class="box">
+              <span class="box-icon">⚙️</span>
+              <div class="box-title">Backend API App Service</div>
+              <div class="box-sub">Node 18 LTS · Linux S1<br/>VNet Integration: backend-subnet</div>
+              <div class="box-tags">
+                <span class="tag red">IP Restrict: 10.0.2.0/24 only</span>
+                <span class="tag">Managed Identity</span>
+                <span class="tag green">HTTPS only</span>
+              </div>
+            </div>
+
+          </div>
+          <div style="margin-top:.6rem; text-align:center; font-size:.75rem; color:var(--muted);">
+            Shared App Service Plan (Standard S1) — both apps on same plan
+          </div>
+        </div>
+
+        <div class="arrow-down">
+          <div class="arrow-line"></div>
+          <div class="arrow-head"></div>
+          <span>Private Endpoints (pe-subnet 10.0.4.0/24)</span>
+        </div>
+
+        <!-- Data Tier -->
+        <div class="zone zone-data">
+          <div class="zone-label">Data Tier — pe-subnet 10.0.4.0/24 &nbsp;|&nbsp; Network policies: Disabled</div>
+          <div class="row">
+
+            <div class="box">
+              <span class="box-icon">💾</span>
+              <div class="box-title">Storage Account</div>
+              <div class="box-sub">Standard LRS · Blob<br/>Container: app-data (private)</div>
+              <div class="box-tags">
+                <span class="tag purple">Private Endpoint</span>
+                <span class="tag red">Public access: Deny</span>
+                <span class="tag">DNS: privatelink.blob.core.windows.net</span>
+              </div>
+            </div>
+
+            <div class="box">
+              <span class="box-icon">🔑</span>
+              <div class="box-title">Key Vault</div>
+              <div class="box-sub">Standard · Soft-delete 7d<br/>Secret: storage-connection-string</div>
+              <div class="box-tags">
+                <span class="tag purple">Private Endpoint</span>
+                <span class="tag">DNS: privatelink.vaultcore.azure.net</span>
+                <span class="tag green">KV Reference</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+        <!-- end data tier -->
+
+      </div>
+      <!-- end vnet -->
+
+    </div>
+  </div>
+
+  <!-- ── Traffic Flow ── -->
+  <h2>Request Flow</h2>
+  <div class="flow-list">
+    <div class="flow-step">
+      <div class="flow-num">1</div>
+      <div class="flow-text">
+        <strong>Client → App Gateway WAF (HTTP :80)</strong>
+        <p>Internet traffic hits the Standard Static Public IP. The NSG on <code>appgw-subnet</code> allows ports 80, 443, and GatewayManager 65200–65535. WAF inspects the request with OWASP 3.2 rules in <strong>Prevention</strong> mode — malicious requests are blocked before they reach the app tier.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">2</div>
+      <div class="flow-text">
+        <strong>App Gateway → Frontend App Service (HTTPS :443)</strong>
+        <p>App Gateway forwards traffic to the frontend App Service hostname over HTTPS. <code>pick_host_name_from_backend_address = true</code> ensures correct SNI for App Service. The frontend enforces an IP restriction allowing only the <code>appgw-subnet</code> service endpoint — direct internet access is denied.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">3</div>
+      <div class="flow-text">
+        <strong>Frontend → Backend API (HTTPS, via VNet Integration)</strong>
+        <p>The frontend calls the backend using the <code>BACKEND_URL</code> app setting. Outbound traffic from the frontend App Service egresses through <code>frontend-subnet</code> (10.0.2.0/24) via Regional VNet Integration. The backend enforces an IP restriction allowing only this subnet — no public access.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">4</div>
+      <div class="flow-text">
+        <strong>Backend → Key Vault (private endpoint, HTTPS)</strong>
+        <p>At startup the backend resolves <code>storage-connection-string</code> via a Key Vault reference (<code>@Microsoft.KeyVault(SecretUri=...)</code>). The private DNS zone <code>privatelink.vaultcore.azure.net</code> resolves the vault FQDN to the private endpoint NIC in <code>pe-subnet</code>. The backend's system-assigned managed identity is granted <em>Get / List</em> via an access policy.</p>
+      </div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">5</div>
+      <div class="flow-text">
+        <strong>Backend → Storage Account (private endpoint)</strong>
+        <p>The storage account has <code>default_action = "Deny"</code> — all public access is blocked. The backend egresses through <code>backend-subnet</code> into the private endpoint in <code>pe-subnet</code>. The private DNS zone <code>privatelink.blob.core.windows.net</code> routes blob traffic privately. The managed identity also holds <em>Storage Blob Data Contributor</em> for passwordless RBAC access.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Subnets ── -->
+  <h2>Subnet Layout</h2>
+  <div class="subnet-grid">
+    <div class="subnet-card">
+      <h3>appgw-subnet</h3>
+      <p class="cidr">10.0.1.0/24</p>
+      <p>App Gateway WAF v2. Service endpoint <code>Microsoft.Web</code> enables App Service IP restrictions to trust VNet-origin traffic. NSG attached (Allow 80, 443, GatewayMgr).</p>
+    </div>
+    <div class="subnet-card">
+      <h3>frontend-subnet</h3>
+      <p class="cidr">10.0.2.0/24</p>
+      <p>Frontend App Service outbound via Regional VNet Integration. Delegated to <code>Microsoft.Web/serverFarms</code>. Outbound IPs used as allow-list source on backend.</p>
+    </div>
+    <div class="subnet-card">
+      <h3>backend-subnet</h3>
+      <p class="cidr">10.0.3.0/24</p>
+      <p>Backend App Service outbound via Regional VNet Integration. Delegated to <code>Microsoft.Web/serverFarms</code>. Outbound IPs reach pe-subnet private endpoints.</p>
+    </div>
+    <div class="subnet-card">
+      <h3>pe-subnet</h3>
+      <p class="cidr">10.0.4.0/24</p>
+      <p>Private endpoint NICs for Storage Account (blob) and Key Vault. Network policies disabled — required for private endpoints. Linked to both private DNS zones.</p>
+    </div>
+  </div>
+
+  <!-- ── NSG Rules ── -->
+  <h2>NSG Rules — appgw-subnet</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Priority</th>
+        <th>Name</th>
+        <th>Direction</th>
+        <th>Protocol</th>
+        <th>Port</th>
+        <th>Source</th>
+        <th>Action</th>
+        <th>Purpose</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>100</td>
+        <td>AllowHTTP</td>
+        <td>Inbound</td>
+        <td>TCP</td>
+        <td>80</td>
+        <td>Internet</td>
+        <td class="allow">Allow</td>
+        <td>Public web traffic to WAF</td>
+      </tr>
+      <tr>
+        <td>110</td>
+        <td>AllowHTTPS</td>
+        <td>Inbound</td>
+        <td>TCP</td>
+        <td>443</td>
+        <td>Internet</td>
+        <td class="allow">Allow</td>
+        <td>Public TLS traffic to WAF</td>
+      </tr>
+      <tr>
+        <td>120</td>
+        <td>AllowGatewayManager</td>
+        <td>Inbound</td>
+        <td>TCP</td>
+        <td>65200–65535</td>
+        <td>GatewayManager</td>
+        <td class="allow">Allow</td>
+        <td>App Gateway v2 health probe infrastructure — mandatory</td>
+      </tr>
+      <tr>
+        <td>65500</td>
+        <td>DenyAllInBound (default)</td>
+        <td>Inbound</td>
+        <td>Any</td>
+        <td>Any</td>
+        <td>Any</td>
+        <td class="deny">Deny</td>
+        <td>Implicit default deny</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ── Identity & RBAC ── -->
+  <h2>Identity &amp; Access</h2>
+  <div class="identity-grid">
+    <div class="identity-card">
+      <h3>Frontend App Service — System Assigned Identity</h3>
+      <ul>
+        <li>No direct Azure RBAC roles assigned</li>
+        <li>Calls backend over HTTPS within VNet</li>
+        <li>Identity used for future integrations (e.g. Key Vault, ACR)</li>
+      </ul>
+    </div>
+    <div class="identity-card">
+      <h3>Backend App Service — System Assigned Identity</h3>
+      <ul>
+        <li><strong>Key Vault Access Policy:</strong> Get, List on secrets</li>
+        <li><strong>RBAC:</strong> Storage Blob Data Contributor on storage account</li>
+        <li>Resolves KV references at App Service runtime — no secrets in code</li>
+      </ul>
+    </div>
+    <div class="identity-card">
+      <h3>Terraform Deployer (Service Principal / User)</h3>
+      <ul>
+        <li><strong>Key Vault Access Policy:</strong> Get, Set, List, Delete, Purge, Recover</li>
+        <li>Required to write <code>storage-connection-string</code> secret during <code>terraform apply</code></li>
+        <li>Should be removed / scoped down in production CI pipelines</li>
+      </ul>
+    </div>
+    <div class="identity-card">
+      <h3>Private DNS Zones</h3>
+      <ul>
+        <li><code>privatelink.blob.core.windows.net</code> → linked to VNet</li>
+        <li><code>privatelink.vaultcore.azure.net</code> → linked to VNet</li>
+        <li>Auto-registration disabled; A records managed by private endpoint group</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ── Security Summary ── -->
+  <h2>Security Controls Summary</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Control</th>
+        <th>Where Applied</th>
+        <th>Detail</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>WAF (OWASP 3.2 Prevention)</td>
+        <td>App Gateway</td>
+        <td>Blocks SQLi, XSS, RFI, LFI, and other OWASP Top 10 exploits before they reach the app tier. Request body check enabled, 128 KB body limit, 100 MB upload limit.</td>
+      </tr>
+      <tr>
+        <td>IP Restrictions</td>
+        <td>Frontend &amp; Backend App Services</td>
+        <td>Default action = Deny. Frontend allows only <code>appgw-subnet</code> (service endpoint). Backend allows only <code>10.0.2.0/24</code> (frontend VNet integration outbound).</td>
+      </tr>
+      <tr>
+        <td>Regional VNet Integration</td>
+        <td>Frontend &amp; Backend App Services</td>
+        <td>All outbound traffic from App Services routes through dedicated delegated subnets, enabling private connectivity to storage and Key Vault endpoints.</td>
+      </tr>
+      <tr>
+        <td>Private Endpoints</td>
+        <td>Storage Account, Key Vault</td>
+        <td>Storage and Key Vault are not reachable from the public internet. Private DNS zones resolve FQDNs to NIC IPs in <code>pe-subnet</code>.</td>
+      </tr>
+      <tr>
+        <td>Managed Identity + Key Vault References</td>
+        <td>Backend App Service</td>
+        <td>Connection string never stored in code or environment variables as plaintext. Azure resolves <code>@Microsoft.KeyVault(...)</code> at runtime using the app's identity.</td>
+      </tr>
+      <tr>
+        <td>TLS 1.2 Minimum</td>
+        <td>Frontend &amp; Backend App Services</td>
+        <td><code>minimum_tls_version = "1.2"</code> and <code>https_only = true</code> enforced on both app services.</td>
+      </tr>
+      <tr>
+        <td>Storage Public Access Deny</td>
+        <td>Storage Account</td>
+        <td><code>default_action = "Deny"</code> in network rules. Only traffic via private endpoint reaches blob storage. <code>AzureServices</code> bypass allows platform-level operations.</td>
+      </tr>
+      <tr>
+        <td>Soft Delete</td>
+        <td>Key Vault</td>
+        <td>7-day soft delete retention. Purge protection disabled for lab — enable in production to prevent accidental secret destruction.</td>
+      </tr>
+    </tbody>
+  </table>
+
+</main>
+
+<footer>
+  az-networking-lab / 2-webapp &nbsp;·&nbsp; East US 2 &nbsp;·&nbsp; Terraform + azurerm 3.x
+</footer>
+
+</body>
+</html>
