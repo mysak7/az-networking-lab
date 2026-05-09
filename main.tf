@@ -17,15 +17,22 @@ resource "azurerm_virtual_network" "mi_vnet" {
   resource_group_name = azurerm_resource_group.mi_rg.name
 }
 
-# Create subnet with service endpoint for storage
+# Create subnet for VMs
 resource "azurerm_subnet" "mi_subnet" {
   name                 = "${var.prefix}-subnet"
   resource_group_name  = azurerm_resource_group.mi_rg.name
   virtual_network_name = azurerm_virtual_network.mi_vnet.name
   address_prefixes     = ["10.0.1.0/24"]
+}
 
-  # service endpoint routes subnet traffic to storage over Azure backbone
-  service_endpoints = ["Microsoft.Storage"]
+# Dedicated subnet for private endpoints (network policies must be disabled)
+resource "azurerm_subnet" "mi_pe_subnet" {
+  name                 = "${var.prefix}-pe-subnet"
+  resource_group_name  = azurerm_resource_group.mi_rg.name
+  virtual_network_name = azurerm_virtual_network.mi_vnet.name
+  address_prefixes     = ["10.0.2.0/24"]
+
+  private_endpoint_network_policies = "Disabled"
 }
 
 # Create public IP
@@ -84,11 +91,11 @@ resource "azurerm_storage_account" "mi_storage_account" {
   account_tier             = "Standard"
   account_replication_type = "LRS"
 
-  # restrict storage access to the subnet via service endpoint
+  # deny all public access; private endpoint handles VNet access
+  # AzureServices bypass allows boot diagnostics to be written by Azure platform
   network_rules {
-    default_action             = "Deny"
-    virtual_network_subnet_ids = [azurerm_subnet.mi_subnet.id]
-    bypass                     = ["AzureServices"]
+    default_action = "Deny"
+    bypass         = ["AzureServices"]
   }
 }
 
@@ -152,35 +159,37 @@ resource "azurerm_role_assignment" "mi_sp_role" {
   principal_id         = azuread_service_principal.mi_sp.object_id
 }
 
-# Private endpoint to storage account (uncomment to experiment with private DNS resolution)
-# resource "azurerm_private_dns_zone" "mi_dns_zone" {
-#   name                = "privatelink.blob.core.windows.net"
-#   resource_group_name = azurerm_resource_group.mi_rg.name
-# }
-#
-# resource "azurerm_private_dns_zone_virtual_network_link" "mi_dns_link" {
-#   name                  = "${var.prefix}-dns-link"
-#   resource_group_name   = azurerm_resource_group.mi_rg.name
-#   private_dns_zone_name = azurerm_private_dns_zone.mi_dns_zone.name
-#   virtual_network_id    = azurerm_virtual_network.mi_vnet.id
-#   registration_enabled  = false
-# }
-#
-# resource "azurerm_private_endpoint" "mi_storage_pe" {
-#   name                = "${var.prefix}-storage-pe"
-#   location            = azurerm_resource_group.mi_rg.location
-#   resource_group_name = azurerm_resource_group.mi_rg.name
-#   subnet_id           = azurerm_subnet.mi_subnet.id
-#
-#   private_service_connection {
-#     name                           = "${var.prefix}-storage-psc"
-#     private_connection_resource_id = azurerm_storage_account.mi_storage_account.id
-#     subresource_names              = ["blob"]
-#     is_manual_connection           = false
-#   }
-#
-#   private_dns_zone_group {
-#     name                 = "default"
-#     private_dns_zone_ids = [azurerm_private_dns_zone.mi_dns_zone.id]
-#   }
-# }
+# Private DNS zone — resolves storage FQDN to private IP inside the VNet
+resource "azurerm_private_dns_zone" "mi_dns_zone" {
+  name                = "privatelink.blob.core.windows.net"
+  resource_group_name = azurerm_resource_group.mi_rg.name
+}
+
+# Link DNS zone to the VNet so VMs can resolve private storage FQDN
+resource "azurerm_private_dns_zone_virtual_network_link" "mi_dns_link" {
+  name                  = "${var.prefix}-dns-link"
+  resource_group_name   = azurerm_resource_group.mi_rg.name
+  private_dns_zone_name = azurerm_private_dns_zone.mi_dns_zone.name
+  virtual_network_id    = azurerm_virtual_network.mi_vnet.id
+  registration_enabled  = false
+}
+
+# Private endpoint — gives storage a private IP (10.0.2.x) inside mi_pe_subnet
+resource "azurerm_private_endpoint" "mi_storage_pe" {
+  name                = "${var.prefix}-storage-pe"
+  location            = azurerm_resource_group.mi_rg.location
+  resource_group_name = azurerm_resource_group.mi_rg.name
+  subnet_id           = azurerm_subnet.mi_pe_subnet.id
+
+  private_service_connection {
+    name                           = "${var.prefix}-storage-psc"
+    private_connection_resource_id = azurerm_storage_account.mi_storage_account.id
+    subresource_names              = ["blob"]
+    is_manual_connection           = false
+  }
+
+  private_dns_zone_group {
+    name                 = "default"
+    private_dns_zone_ids = [azurerm_private_dns_zone.mi_dns_zone.id]
+  }
+}
