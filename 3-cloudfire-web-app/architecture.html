@@ -3,348 +3,357 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cloudflare + Azure App Service Architecture</title>
+  <title>Cloudflare + Azure App Service — Architecture</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --azure-blue:   #0078d4;
-      --azure-dark:   #004578;
-      --azure-light:  #deecf9;
-      --cf-orange:    #f48120;
-      --cf-light:     #fef0e3;
-      --cf-dark:      #9c4a00;
-      --internet-bg:  #f3f2f1;
-      --azure-bg:     #dff6dd;
-      --text:         #1b1b1b;
-      --muted:        #605e5c;
-      --border:       #d2d0ce;
-      --shadow:       0 2px 8px rgba(0,0,0,.12);
-      --radius:       8px;
+      --azure-blue:  #0078d4;
+      --azure-dark:  #004578;
+      --azure-light: #dff0fc;
+      --cf-orange:   #f48120;
+      --cf-light:    #fff4e8;
+      --cf-dark:     #7a3000;
+      --dns-purple:  #5c2d91;
+      --dns-light:   #f4eefb;
+      --green:       #107c10;
+      --green-light: #dff6dd;
+      --text:        #1b1b1b;
+      --muted:       #605e5c;
+      --border:      #d2d0ce;
+      --shadow:      0 2px 12px rgba(0,0,0,.10);
+      --r:           10px;
     }
 
     body {
       font-family: "Segoe UI", system-ui, sans-serif;
-      background: #f8f8f8;
+      background: #f0f2f5;
       color: var(--text);
-      line-height: 1.5;
+      min-height: 100vh;
     }
 
     /* ── Header ── */
     header {
-      background: linear-gradient(135deg, var(--azure-dark) 0%, var(--azure-blue) 60%, #7a3a00 100%);
+      background: linear-gradient(130deg, #003366 0%, var(--azure-blue) 55%, #7a3000 100%);
       color: #fff;
-      padding: 2.5rem 3rem;
+      padding: 2.2rem 3rem 2rem;
     }
-    header h1 { font-size: 1.9rem; font-weight: 700; letter-spacing: -.5px; }
-    header p  { margin-top: .5rem; opacity: .85; font-size: .95rem; }
-    .badge-row { display: flex; gap: .6rem; margin-top: 1rem; flex-wrap: wrap; }
+    header h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -.4px; }
+    header p  { margin-top: .4rem; opacity: .82; font-size: .93rem; }
+    .badge-row { display: flex; gap: .5rem; margin-top: .9rem; flex-wrap: wrap; }
     .badge {
-      background: rgba(255,255,255,.18);
-      border: 1px solid rgba(255,255,255,.35);
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.3);
       border-radius: 20px;
-      padding: .2rem .75rem;
-      font-size: .78rem;
+      padding: .18rem .7rem;
+      font-size: .75rem;
       font-weight: 600;
-      letter-spacing: .3px;
     }
-    .badge.cf   { background: rgba(244,129,32,.3); border-color: rgba(244,129,32,.6); }
-    .badge.free { background: rgba(76,175,130,.25); border-color: rgba(76,175,130,.5); }
+    .badge.cf   { background: rgba(244,129,32,.28); border-color: rgba(244,129,32,.55); }
+    .badge.ok   { background: rgba(16,124,16,.28);  border-color: rgba(16,124,16,.5); }
 
-    /* ── Layout ── */
-    .main { max-width: 1000px; margin: 0 auto; padding: 2rem 2rem 3rem; display: flex; flex-direction: column; gap: 1.5rem; }
+    /* ── Page body ── */
+    .page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 3rem; display: flex; flex-direction: column; gap: 1.5rem; }
 
-    /* ── Architecture diagram ── */
-    .diagram {
+    /* ── Section card ── */
+    .card {
       background: #fff;
       border: 1px solid var(--border);
-      border-radius: var(--radius);
+      border-radius: var(--r);
       box-shadow: var(--shadow);
-      padding: 2rem;
+      overflow: hidden;
     }
-    .diagram h2 { font-size: .85rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 1.5rem; }
-
-    .layers { display: flex; flex-direction: column; gap: .5rem; }
-
-    .layer {
-      border-radius: var(--radius);
-      padding: 1rem 1.25rem;
-      border: 1px solid;
-      position: relative;
-    }
-
-    .layer-label {
-      font-size: .72rem;
+    .card-title {
+      font-size: .73rem;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: .8px;
-      margin-bottom: .75rem;
-    }
-
-    .layer.internet  { background: var(--internet-bg); border-color: #c8c6c4; }
-    .layer.cf        { background: var(--cf-light);    border-color: #f4a55a; }
-    .layer.azure     { background: var(--azure-light); border-color: #5ab3f0; }
-    .layer.dns       { background: #f3eef8;             border-color: #c5b4e3; }
-
-    .layer.internet .layer-label { color: #605e5c; }
-    .layer.cf       .layer-label { color: var(--cf-dark); }
-    .layer.azure    .layer-label { color: var(--azure-dark); }
-    .layer.dns      .layer-label { color: #5c2d91; }
-
-    .components { display: flex; gap: .75rem; flex-wrap: wrap; }
-
-    .component {
-      background: rgba(255,255,255,.7);
-      border: 1px solid rgba(0,0,0,.1);
-      border-radius: 6px;
-      padding: .6rem .9rem;
-      font-size: .82rem;
-      display: flex;
-      flex-direction: column;
-      gap: .2rem;
-      min-width: 150px;
-    }
-    .component strong { font-size: .85rem; }
-    .component span   { font-size: .72rem; color: var(--muted); }
-
-    .arrow-down {
-      text-align: center;
-      font-size: 1.1rem;
+      letter-spacing: 1px;
       color: var(--muted);
-      padding: .1rem 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: .5rem;
-      font-size: .78rem;
+      padding: 1rem 1.5rem .8rem;
+      border-bottom: 1px solid #f0eded;
     }
+
+    /* ── Diagram SVG wrapper ── */
+    .diagram-wrap { padding: 1.5rem; }
+    svg.arch { width: 100%; height: auto; display: block; }
 
     /* ── Info grid ── */
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1rem;
-    }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
 
     .info-card {
       background: #fff;
       border: 1px solid var(--border);
-      border-radius: var(--radius);
+      border-radius: var(--r);
       box-shadow: var(--shadow);
-      padding: 1.25rem 1.5rem;
+      padding: 1.15rem 1.35rem;
     }
-
     .info-card h3 {
-      font-size: .85rem;
+      font-size: .82rem;
       font-weight: 700;
-      margin-bottom: 1rem;
-      padding-bottom: .5rem;
+      margin-bottom: .9rem;
+      padding-bottom: .45rem;
       border-bottom: 2px solid;
     }
     .info-card h3.cf    { border-color: var(--cf-orange); color: var(--cf-dark); }
     .info-card h3.azure { border-color: var(--azure-blue); color: var(--azure-dark); }
-    .info-card h3.dns   { border-color: #5c2d91; color: #5c2d91; }
-    .info-card h3.setup { border-color: #107c10; color: #107c10; }
+    .info-card h3.dns   { border-color: var(--dns-purple); color: var(--dns-purple); }
+    .info-card h3.sec   { border-color: var(--green); color: var(--green); }
+    .info-card h3.dep   { border-color: #8a6914; color: #8a6914; }
 
-    .kv-list { display: flex; flex-direction: column; gap: .5rem; font-size: .83rem; }
-    .kv-list dt { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .5px; margin-top: .25rem; }
-    .kv-list dd { font-weight: 500; }
-    .kv-list dd code { font-family: "Consolas", monospace; font-size: .8rem; background: #f3f2f1; padding: .1rem .35rem; border-radius: 3px; }
+    dl.kv { display: flex; flex-direction: column; gap: .38rem; font-size: .82rem; }
+    dl.kv dt { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .4px; margin-top: .2rem; }
+    dl.kv dd { font-weight: 500; }
+    dl.kv dd code { font-family: "Consolas", monospace; font-size: .78rem; background: #f3f2f1; padding: .1rem .32rem; border-radius: 3px; }
 
-    .step-list { list-style: none; display: flex; flex-direction: column; gap: .6rem; font-size: .83rem; }
-    .step-list li { display: flex; gap: .6rem; align-items: flex-start; }
-    .step-list li .num {
+    ol.steps { list-style: none; display: flex; flex-direction: column; gap: .55rem; font-size: .82rem; }
+    ol.steps li { display: flex; gap: .6rem; align-items: flex-start; }
+    ol.steps li .n {
       background: var(--azure-blue); color: #fff;
       border-radius: 50%; width: 20px; height: 20px; min-width: 20px;
       display: flex; align-items: center; justify-content: center;
-      font-size: .72rem; font-weight: 700; margin-top: .05rem;
+      font-size: .7rem; font-weight: 700; margin-top: .08rem;
     }
 
     /* ── DNS table ── */
-    .dns-full {
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 1.25rem 1.5rem;
-    }
-    .dns-full h3 { font-size: .85rem; font-weight: 700; color: #5c2d91; border-bottom: 2px solid #5c2d91; padding-bottom: .5rem; margin-bottom: 1rem; }
-
-    table { width: 100%; border-collapse: collapse; font-size: .82rem; }
-    th { text-align: left; font-size: .75rem; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); padding: .4rem .75rem; border-bottom: 1px solid var(--border); }
-    td { padding: .55rem .75rem; border-bottom: 1px solid #f0f0f0; font-family: "Consolas", monospace; vertical-align: middle; }
+    table { width: 100%; border-collapse: collapse; font-size: .81rem; }
+    th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); padding: .4rem .8rem; border-bottom: 1px solid var(--border); }
+    td { padding: .5rem .8rem; border-bottom: 1px solid #f4f3f2; font-family: "Consolas", monospace; vertical-align: middle; }
     tr:last-child td { border-bottom: none; }
 
-    .tag { display: inline-block; padding: .15rem .5rem; border-radius: 4px; font-size: .7rem; font-weight: 700; font-family: "Segoe UI", sans-serif; }
+    .tag { display: inline-block; padding: .12rem .45rem; border-radius: 4px; font-size: .68rem; font-weight: 700; font-family: "Segoe UI", sans-serif; }
     .tag.cname { background: #fff4e0; color: var(--cf-dark); }
-    .tag.txt   { background: #e8f5e9; color: #276c27; }
-    .tag.ns    { background: var(--azure-light); color: var(--azure-dark); }
+    .tag.txt   { background: #e8f5e9; color: #1a6b1a; }
 
     .dot { display: inline-flex; align-items: center; gap: .3rem; font-family: "Segoe UI", sans-serif; font-size: .78rem; }
-    .dot::before { content: "●"; font-size: .55rem; }
+    .dot::before { content: "●"; font-size: .52rem; }
     .dot.orange { color: var(--cf-orange); }
     .dot.grey   { color: var(--muted); }
 
-    footer { text-align: center; padding: 2rem; font-size: .8rem; color: var(--muted); border-top: 1px solid var(--border); margin-top: 1rem; }
+    footer { text-align: center; padding: 1.8rem; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--border); margin-top: .5rem; }
+
+    @media (max-width: 700px) {
+      .grid2, .grid3 { grid-template-columns: 1fr; }
+      header { padding: 1.5rem; }
+    }
   </style>
 </head>
 <body>
 
 <header>
   <h1>Cloudflare + Azure App Service</h1>
-  <p>3-cloudfire-web-app · cloudfire.mysak.fun</p>
+  <p>3-cloudfire-web-app &nbsp;·&nbsp; cloudfire.mysak.fun</p>
   <div class="badge-row">
     <span class="badge cf">Cloudflare Free</span>
-    <span class="badge free">Azure B1 ~$13/mo</span>
+    <span class="badge ok">Azure B1 ~$13/mo</span>
     <span class="badge">East US 2</span>
     <span class="badge">Terraform managed</span>
+    <span class="badge">Python 3.11</span>
   </div>
 </header>
 
-<div class="main">
+<div class="page">
 
-  <!-- Architecture diagram -->
-  <div class="diagram">
-    <h2>Architecture — Traffic Flow</h2>
-    <div class="layers">
+  <!-- ── Visual Architecture Diagram ── -->
+  <div class="card">
+    <div class="card-title">Architecture — Traffic Flow</div>
+    <div class="diagram-wrap">
+      <svg class="arch" viewBox="0 0 960 640" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, system-ui, sans-serif">
 
-      <div class="layer internet">
-        <div class="layer-label">Internet</div>
-        <div class="components">
-          <div class="component">
-            <strong>Browser</strong>
-            <span>HTTPS · cloudfire.mysak.fun</span>
-          </div>
-        </div>
-      </div>
+        <!-- ░░ Zone backgrounds ░░ -->
 
-      <div class="arrow-down">▼ &nbsp;DNS resolves to Cloudflare IP &nbsp;▼</div>
+        <!-- Internet zone -->
+        <rect x="10" y="10" width="940" height="110" rx="10" fill="#f3f2f1" stroke="#c8c6c4" stroke-width="1.5"/>
+        <text x="26" y="32" font-size="11" font-weight="700" fill="#605e5c" letter-spacing="1" text-anchor="start" text-transform="uppercase">INTERNET</text>
 
-      <div class="layer cf">
-        <div class="layer-label">Cloudflare Edge (Free Plan)</div>
-        <div class="components">
-          <div class="component">
-            <strong>CDN</strong>
-            <span>300+ global PoPs</span>
-          </div>
-          <div class="component">
-            <strong>DDoS Mitigation</strong>
-            <span>Unmetered, automatic</span>
-          </div>
-          <div class="component">
-            <strong>SSL Termination</strong>
-            <span>Cloudflare cert for cloudfire.mysak.fun</span>
-          </div>
-          <div class="component">
-            <strong>Always-HTTPS</strong>
-            <span>HTTP → HTTPS redirect</span>
-          </div>
-          <div class="component">
-            <strong>DNS (proxy)</strong>
-            <span>Hides origin IP</span>
-          </div>
-        </div>
-      </div>
+        <!-- Cloudflare zone -->
+        <rect x="10" y="140" width="940" height="160" rx="10" fill="#fff4e8" stroke="#f4a55a" stroke-width="1.5"/>
+        <text x="26" y="162" font-size="11" font-weight="700" fill="#7a3000" letter-spacing="1">CLOUDFLARE EDGE — FREE PLAN</text>
 
-      <div class="arrow-down">▼ &nbsp;Encrypted (Full SSL) to origin &nbsp;▼</div>
+        <!-- Azure zone -->
+        <rect x="10" y="320" width="940" height="170" rx="10" fill="#dff0fc" stroke="#5ab3f0" stroke-width="1.5"/>
+        <text x="26" y="342" font-size="11" font-weight="700" fill="#004578" letter-spacing="1">AZURE — EAST US 2</text>
 
-      <div class="layer azure">
-        <div class="layer-label">Azure — East US 2</div>
-        <div class="components">
-          <div class="component">
-            <strong>App Service Plan B1</strong>
-            <span>Linux · 1 vCore · 1.75 GB RAM</span>
-          </div>
-          <div class="component">
-            <strong>App Service</strong>
-            <span>Python 3.11 · http.server</span>
-          </div>
-          <div class="component">
-            <strong>IP Restriction</strong>
-            <span>Cloudflare IPs only (22 ranges)</span>
-          </div>
-          <div class="component">
-            <strong>Custom Domain</strong>
-            <span>cloudfire.mysak.fun (TXT verified)</span>
-          </div>
-        </div>
-      </div>
+        <!-- DNS zone -->
+        <rect x="10" y="510" width="940" height="120" rx="10" fill="#f4eefb" stroke="#c5b4e3" stroke-width="1.5"/>
+        <text x="26" y="532" font-size="11" font-weight="700" fill="#5c2d91" letter-spacing="1">DNS — mysak.fun</text>
 
-      <div class="arrow-down">▼ &nbsp;NS delegation to Cloudflare &nbsp;▼</div>
+        <!-- ░░ INTERNET: Browser ░░ -->
+        <rect x="400" y="40" width="160" height="64" rx="8" fill="#fff" stroke="#c8c6c4" stroke-width="1.5" filter="url(#sh)"/>
+        <text x="480" y="67" font-size="13" font-weight="700" fill="#1b1b1b" text-anchor="middle">Browser / Client</text>
+        <text x="480" y="84" font-size="11" fill="#605e5c" text-anchor="middle">HTTPS · cloudfire.mysak.fun</text>
 
-      <div class="layer dns">
-        <div class="layer-label">DNS — mysak.fun</div>
-        <div class="components">
-          <div class="component">
-            <strong>Azure DNS Zone</strong>
-            <span>NS records → Cloudflare nameservers</span>
-          </div>
-          <div class="component">
-            <strong>Cloudflare DNS</strong>
-            <span>Full zone · CNAME + TXT records</span>
-          </div>
-        </div>
-      </div>
+        <!-- ░░ Arrow: Browser → CF ░░ -->
+        <line x1="480" y1="104" x2="480" y2="168" stroke="#f48120" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-orange)"/>
+        <rect x="340" y="115" width="280" height="22" rx="4" fill="#fff4e8" opacity=".9"/>
+        <text x="480" y="130" font-size="10" fill="#7a3000" text-anchor="middle">DNS resolves cloudfire.mysak.fun → Cloudflare IP</text>
 
+        <!-- ░░ CLOUDFLARE: 4 components ░░ -->
+        <!-- CDN -->
+        <rect x="40" y="175" width="150" height="100" rx="8" fill="#fff" stroke="#f4a55a" stroke-width="1.5"/>
+        <text x="115" y="204" font-size="12" font-weight="700" fill="#7a3000" text-anchor="middle">CDN</text>
+        <text x="115" y="222" font-size="10" fill="#605e5c" text-anchor="middle">300+ global PoPs</text>
+        <text x="115" y="237" font-size="10" fill="#605e5c" text-anchor="middle">Static asset caching</text>
+        <text x="115" y="252" font-size="10" fill="#605e5c" text-anchor="middle">at edge</text>
+
+        <!-- DDoS -->
+        <rect x="210" y="175" width="150" height="100" rx="8" fill="#fff" stroke="#f4a55a" stroke-width="1.5"/>
+        <text x="285" y="204" font-size="12" font-weight="700" fill="#7a3000" text-anchor="middle">DDoS Mitigation</text>
+        <text x="285" y="222" font-size="10" fill="#605e5c" text-anchor="middle">Unmetered, automatic</text>
+        <text x="285" y="237" font-size="10" fill="#605e5c" text-anchor="middle">L3 / L4 / L7</text>
+
+        <!-- SSL + Always HTTPS -->
+        <rect x="380" y="175" width="200" height="100" rx="8" fill="#fff" stroke="#f4a55a" stroke-width="1.5"/>
+        <text x="480" y="204" font-size="12" font-weight="700" fill="#7a3000" text-anchor="middle">TLS &amp; SSL</text>
+        <text x="480" y="222" font-size="10" fill="#605e5c" text-anchor="middle">Terminates TLS from browser</text>
+        <text x="480" y="237" font-size="10" fill="#605e5c" text-anchor="middle">Mode: Full (not Strict)</text>
+        <text x="480" y="252" font-size="10" fill="#605e5c" text-anchor="middle">Always HTTPS · min TLS 1.2</text>
+
+        <!-- Proxy (orange cloud) -->
+        <rect x="600" y="175" width="170" height="100" rx="8" fill="#fff" stroke="#f4a55a" stroke-width="1.5"/>
+        <text x="685" y="204" font-size="12" font-weight="700" fill="#7a3000" text-anchor="middle">Proxy (Orange Cloud)</text>
+        <text x="685" y="222" font-size="10" fill="#605e5c" text-anchor="middle">Hides origin IP</text>
+        <text x="685" y="237" font-size="10" fill="#605e5c" text-anchor="middle">CNAME → azurewebsites</text>
+        <text x="685" y="252" font-size="10" fill="#605e5c" text-anchor="middle">.net (proxied)</text>
+
+        <!-- Zone Settings -->
+        <rect x="790" y="175" width="150" height="100" rx="8" fill="#fff" stroke="#f4a55a" stroke-width="1.5"/>
+        <text x="865" y="200" font-size="12" font-weight="700" fill="#7a3000" text-anchor="middle">Zone Settings</text>
+        <text x="865" y="218" font-size="10" fill="#605e5c" text-anchor="middle">ssl = "full"</text>
+        <text x="865" y="233" font-size="10" fill="#605e5c" text-anchor="middle">min_tls_version = 1.2</text>
+        <text x="865" y="248" font-size="10" fill="#605e5c" text-anchor="middle">always_use_https = on</text>
+
+        <!-- ░░ Arrow: CF → Azure ░░ -->
+        <line x1="480" y1="275" x2="480" y2="347" stroke="#0078d4" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-blue)"/>
+        <rect x="320" y="285" width="320" height="22" rx="4" fill="#dff0fc" opacity=".9"/>
+        <text x="480" y="300" font-size="10" fill="#004578" text-anchor="middle">Encrypted HTTPS (Full SSL) — Cloudflare IPs only allowed</text>
+
+        <!-- ░░ AZURE: App Service Plan + App ░░ -->
+        <!-- App Service Plan -->
+        <rect x="40" y="355" width="220" height="115" rx="8" fill="#fff" stroke="#5ab3f0" stroke-width="1.5"/>
+        <text x="150" y="381" font-size="12" font-weight="700" fill="#004578" text-anchor="middle">App Service Plan B1</text>
+        <text x="150" y="399" font-size="10" fill="#605e5c" text-anchor="middle">Linux · 1 vCore · 1.75 GB RAM</text>
+        <text x="150" y="414" font-size="10" fill="#605e5c" text-anchor="middle">SKU: B1 (~$13/mo)</text>
+        <text x="150" y="429" font-size="10" fill="#605e5c" text-anchor="middle">Region: East US 2</text>
+        <text x="150" y="444" font-size="10" fill="#605e5c" text-anchor="middle">OS: Linux</text>
+        <text x="150" y="459" font-size="10" fill="#605e5c" text-anchor="middle">Resource Group: mi-cloudfire-rg</text>
+
+        <!-- App Service (Web App) -->
+        <rect x="285" y="355" width="390" height="115" rx="8" fill="#fff" stroke="#5ab3f0" stroke-width="2"/>
+        <text x="480" y="381" font-size="12" font-weight="700" fill="#004578" text-anchor="middle">Azure Linux Web App</text>
+        <text x="480" y="399" font-size="10" fill="#605e5c" text-anchor="middle">Runtime: Python 3.11 · python3 -m http.server 8080</text>
+        <text x="480" y="414" font-size="10" fill="#605e5c" text-anchor="middle">HTTPS only · min TLS 1.2</text>
+        <text x="480" y="429" font-size="10" fill="#605e5c" text-anchor="middle">Custom domain: cloudfire.mysak.fun (TXT verified)</text>
+        <text x="480" y="444" font-size="10" fill="#605e5c" text-anchor="middle">IP Restriction: Allow 22 Cloudflare ranges · Default Deny</text>
+        <text x="480" y="459" font-size="10" fill="#605e5c" text-anchor="middle">SCM endpoint: separate open rules (for az webapp deploy)</text>
+
+        <!-- IP Restriction callout -->
+        <rect x="700" y="355" width="240" height="115" rx="8" fill="#fff" stroke="#107c10" stroke-width="1.5"/>
+        <text x="820" y="381" font-size="12" font-weight="700" fill="#107c10" text-anchor="middle">IP Firewall</text>
+        <text x="820" y="399" font-size="10" fill="#605e5c" text-anchor="middle">Cloudflare IPv4: 15 ranges</text>
+        <text x="820" y="414" font-size="10" fill="#605e5c" text-anchor="middle">Cloudflare IPv6: 7 ranges</text>
+        <text x="820" y="429" font-size="10" fill="#605e5c" text-anchor="middle">Default action: Deny</text>
+        <text x="820" y="444" font-size="10" fill="#605e5c" text-anchor="middle">Direct .azurewebsites.net</text>
+        <text x="820" y="459" font-size="10" fill="#605e5c" text-anchor="middle">access → 403 Forbidden</text>
+
+        <!-- ░░ Arrow: Azure → DNS ░░ -->
+        <line x1="480" y1="470" x2="480" y2="537" stroke="#5c2d91" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr-purple)"/>
+
+        <!-- ░░ DNS zone ░░ -->
+        <!-- CNAME record -->
+        <rect x="100" y="548" width="280" height="66" rx="8" fill="#fff" stroke="#c5b4e3" stroke-width="1.5"/>
+        <text x="240" y="571" font-size="11" font-weight="700" fill="#5c2d91" text-anchor="middle">CNAME Record (proxied)</text>
+        <text x="240" y="589" font-size="10" fill="#605e5c" text-anchor="middle">cloudfire → &lt;app&gt;.azurewebsites.net</text>
+        <text x="240" y="603" font-size="10" fill="#605e5c" text-anchor="middle">TTL: 1 (auto) · orange cloud ON</text>
+
+        <!-- TXT record -->
+        <rect x="420" y="548" width="300" height="66" rx="8" fill="#fff" stroke="#c5b4e3" stroke-width="1.5"/>
+        <text x="570" y="571" font-size="11" font-weight="700" fill="#5c2d91" text-anchor="middle">TXT Record (DNS only)</text>
+        <text x="570" y="589" font-size="10" fill="#605e5c" text-anchor="middle">asuid.cloudfire → custom_domain_verification_id</text>
+        <text x="570" y="603" font-size="10" fill="#605e5c" text-anchor="middle">TTL: 60 · not proxied · ownership proof</text>
+
+        <!-- Nameservers note -->
+        <rect x="750" y="548" width="180" height="66" rx="8" fill="#fff" stroke="#c5b4e3" stroke-width="1.5"/>
+        <text x="840" y="571" font-size="11" font-weight="700" fill="#5c2d91" text-anchor="middle">NS Delegation</text>
+        <text x="840" y="589" font-size="10" fill="#605e5c" text-anchor="middle">mysak.fun NS →</text>
+        <text x="840" y="603" font-size="10" fill="#605e5c" text-anchor="middle">Cloudflare nameservers</text>
+
+        <!-- ░░ Defs: drop shadow + arrowheads ░░ -->
+        <defs>
+          <filter id="sh" x="-10%" y="-10%" width="120%" height="120%">
+            <feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity=".12"/>
+          </filter>
+          <marker id="arr-orange" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#f48120"/>
+          </marker>
+          <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#0078d4"/>
+          </marker>
+          <marker id="arr-purple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#5c2d91"/>
+          </marker>
+        </defs>
+
+      </svg>
     </div>
   </div>
 
-  <!-- DNS records table -->
-  <div class="dns-full">
-    <h3>Cloudflare DNS Records (Terraform managed)</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Value / Content</th>
-          <th>Proxy</th>
-          <th>Purpose</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>cloudfire</td>
-          <td><span class="tag cname">CNAME</span></td>
-          <td>&lt;prefix&gt;-cloudfire-&lt;suffix&gt;.azurewebsites.net</td>
-          <td><span class="dot orange">Proxied</span></td>
-          <td style="font-family: 'Segoe UI', sans-serif">Routes traffic through Cloudflare</td>
-        </tr>
-        <tr>
-          <td>asuid.cloudfire</td>
-          <td><span class="tag txt">TXT</span></td>
-          <td>&lt;App Service custom_domain_verification_id&gt;</td>
-          <td><span class="dot grey">DNS only</span></td>
-          <td style="font-family: 'Segoe UI', sans-serif">App Service domain ownership proof</td>
-        </tr>
-      </tbody>
-    </table>
+  <!-- ── DNS Records Table ── -->
+  <div class="card">
+    <div class="card-title">Cloudflare DNS Records (Terraform managed)</div>
+    <div style="padding:0 .5rem .5rem">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th><th>Type</th><th>Value / Content</th><th>Proxy</th><th>TTL</th><th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>cloudfire</td>
+            <td><span class="tag cname">CNAME</span></td>
+            <td>&lt;prefix&gt;-cloudfire-&lt;suffix&gt;.azurewebsites.net</td>
+            <td><span class="dot orange">Proxied</span></td>
+            <td>1 (auto)</td>
+            <td style="font-family:'Segoe UI',sans-serif;font-size:.8rem">Routes traffic through Cloudflare edge</td>
+          </tr>
+          <tr>
+            <td>asuid.cloudfire</td>
+            <td><span class="tag txt">TXT</span></td>
+            <td>&lt;custom_domain_verification_id&gt;</td>
+            <td><span class="dot grey">DNS only</span></td>
+            <td>60 s</td>
+            <td style="font-family:'Segoe UI',sans-serif;font-size:.8rem">App Service custom domain ownership proof</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <!-- Info grid -->
-  <div class="info-grid">
+  <!-- ── Detail cards ── -->
+  <div class="grid3">
 
     <div class="info-card">
-      <h3 class="cf">Cloudflare Free Features Used</h3>
-      <dl class="kv-list">
+      <h3 class="cf">Cloudflare Free Features</h3>
+      <dl class="kv">
         <dt>SSL Mode</dt>
         <dd>Full — encrypted to origin, cert not validated</dd>
         <dt>Proxy</dt>
-        <dd>Orange cloud — origin IP hidden from internet</dd>
+        <dd>Orange cloud — origin IP hidden</dd>
         <dt>DDoS</dt>
         <dd>Always-on, unmetered L3/L4/L7</dd>
         <dt>CDN</dt>
-        <dd>Static asset caching at edge</dd>
+        <dd>Static caching at 300+ PoPs</dd>
         <dt>Always HTTPS</dt>
-        <dd>Redirect HTTP → HTTPS at edge</dd>
+        <dd>HTTP → HTTPS redirect at edge</dd>
         <dt>Min TLS</dt>
-        <dd>TLS 1.2+</dd>
+        <dd>TLS 1.2+ (zone-wide override)</dd>
       </dl>
     </div>
 
     <div class="info-card">
       <h3 class="azure">Azure App Service (B1)</h3>
-      <dl class="kv-list">
+      <dl class="kv">
         <dt>OS / Runtime</dt>
         <dd>Linux · Python 3.11</dd>
         <dt>Startup</dt>
@@ -352,48 +361,65 @@
         <dt>Custom domain</dt>
         <dd><code>cloudfire.mysak.fun</code></dd>
         <dt>TLS</dt>
-        <dd>Minimum 1.2 · https_only = true</dd>
+        <dd>https_only = true · min 1.2</dd>
         <dt>IP Restriction</dt>
-        <dd>Allow Cloudflare (22 ranges) · Deny all</dd>
+        <dd>22 Cloudflare ranges · Default Deny</dd>
         <dt>SCM endpoint</dt>
-        <dd>Separate rules — open for <code>az webapp deploy</code></dd>
+        <dd>Separate rules — open for deploy</dd>
       </dl>
     </div>
 
     <div class="info-card">
-      <h3 class="dns">What to set in Cloudflare dashboard</h3>
-      <ol class="step-list">
-        <li><span class="num">1</span> Go to cloudflare.com → Add a site → enter <strong>mysak.fun</strong></li>
-        <li><span class="num">2</span> Select <strong>Free plan</strong></li>
-        <li><span class="num">3</span> Cloudflare scans existing Azure DNS records → review &amp; import</li>
-        <li><span class="num">4</span> Copy the 2 Cloudflare nameservers shown (e.g. <em>arnold.ns.cloudflare.com</em>)</li>
-        <li><span class="num">5</span> In Azure DNS Zone for mysak.fun → update NS records to Cloudflare's nameservers</li>
-        <li><span class="num">6</span> Run <code>terraform apply</code> → CNAME + TXT records created automatically</li>
-        <li><span class="num">7</span> Get your <strong>Zone ID</strong> from Cloudflare dashboard → right side panel → paste in <code>terraform.tfvars</code></li>
-      </ol>
-    </div>
-
-    <div class="info-card">
-      <h3 class="setup">Security: Cloudflare IP Lock</h3>
-      <dl class="kv-list">
+      <h3 class="sec">Security: Cloudflare IP Lock</h3>
+      <dl class="kv">
         <dt>Why</dt>
-        <dd>Without it, anyone can bypass Cloudflare by hitting azurewebsites.net directly</dd>
+        <dd>Prevents bypass of Cloudflare via direct .azurewebsites.net access</dd>
         <dt>How</dt>
-        <dd>22 Cloudflare IP ranges (IPv4 + IPv6) allowed; default action = Deny</dd>
-        <dt>Management plane</dt>
-        <dd>SCM endpoint (Kudu) has separate, open restrictions — Azure management APIs are unaffected</dd>
-        <dt>IP range updates</dt>
-        <dd>Cloudflare rarely changes IPs; update the list in <code>main.tf</code> locals if needed</dd>
-        <dt>Verify lock</dt>
-        <dd>Try curl on azurewebsites.net URL directly — should get 403</dd>
+        <dd>22 CF IP ranges (IPv4 + IPv6) allowed; default = Deny</dd>
+        <dt>SCM</dt>
+        <dd>scm_use_main_ip_restriction = false so Kudu stays accessible</dd>
+        <dt>Verify</dt>
+        <dd><code>curl</code> the .azurewebsites.net URL → expect 403</dd>
       </dl>
+    </div>
+
+  </div>
+
+  <div class="grid2">
+
+    <div class="info-card">
+      <h3 class="dep">Deployment Pipeline</h3>
+      <dl class="kv">
+        <dt>Landing page</dt>
+        <dd><code>landing.html</code> → <code>.deploy/index.html</code></dd>
+        <dt>Package</dt>
+        <dd><code>archive_file</code> zips <code>.deploy/</code> → <code>app.zip</code></dd>
+        <dt>Deploy</dt>
+        <dd><code>az webapp deploy --type zip</code> via <code>null_resource</code></dd>
+        <dt>Re-deploy trigger</dt>
+        <dd>MD5 hash of <code>landing.html</code> content</dd>
+        <dt>SCM restriction</dt>
+        <dd>Main-site IP rules don't apply to SCM endpoint</dd>
+      </dl>
+    </div>
+
+    <div class="info-card">
+      <h3 class="dns">Setup Checklist</h3>
+      <ol class="steps">
+        <li><span class="n">1</span>Add <strong>mysak.fun</strong> to Cloudflare (Free plan) — get 2 nameservers</li>
+        <li><span class="n">2</span>Update NS records in Azure DNS Zone → Cloudflare nameservers</li>
+        <li><span class="n">3</span>Copy <strong>Zone ID</strong> from Cloudflare dashboard → <code>terraform.tfvars</code></li>
+        <li><span class="n">4</span>Run <code>terraform apply</code> — CNAME + TXT records created automatically</li>
+        <li><span class="n">5</span>App Service custom domain bound via TXT verification (works with orange cloud)</li>
+        <li><span class="n">6</span>Deploy zips <code>landing.html</code> and uploads via <code>az webapp deploy</code></li>
+      </ol>
     </div>
 
   </div>
 
 </div>
 
-<footer>Azure Networking Lab · 3-cloudfire-web-app · Terraform · May 2026</footer>
+<footer>Azure Networking Lab &nbsp;·&nbsp; 3-cloudfire-web-app &nbsp;·&nbsp; Terraform &nbsp;·&nbsp; May 2026</footer>
 
 </body>
 </html>
