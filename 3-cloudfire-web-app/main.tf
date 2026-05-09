@@ -94,7 +94,7 @@ resource "azurerm_app_service_custom_hostname_binding" "cloudfire" {
   hostname            = local.fqdn
   app_service_name    = azurerm_linux_web_app.app.name
   resource_group_name = azurerm_resource_group.rg.name
-  depends_on          = [cloudflare_record.verify_txt]
+  depends_on          = [cloudflare_dns_record.verify_txt]
 }
 
 # ── Landing page deployment ──────────────────────────────────────────────────
@@ -118,7 +118,7 @@ resource "null_resource" "deploy_app" {
   }
 
   provisioner "local-exec" {
-    command = "az webapp deploy --resource-group ${azurerm_resource_group.rg.name} --name ${local.app_name} --src-path ${data.archive_file.app_zip.output_path} --type zip"
+    command = "az webapp deploy --resource-group ${azurerm_resource_group.rg.name} --name ${local.app_name} --src-path ${data.archive_file.app_zip.output_path} --type zip --async true"
   }
 
   depends_on = [azurerm_linux_web_app.app, data.archive_file.app_zip]
