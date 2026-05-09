@@ -4,7 +4,7 @@ variable "prefix" {
 }
 
 variable "location" {
-  default     = "eastus2"
+  default     = "swedencentral"
   description = "Azure region"
 }
 
