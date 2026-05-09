@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NSG Diagnostics + VM Metrics — Architecture</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --azure-blue:  #0078d4;
+  --azure-dark:  #004578;
+  --azure-light: #dff0fc;
+  --green:       #107c10;
+  --green-light: #dff6dd;
+  --purple:      #5c2d91;
+  --purple-light:#f4eefb;
+  --orange:      #ca5010;
+  --orange-light:#fff4e8;
+  --text:        #1b1b1b;
+  --muted:       #605e5c;
+  --border:      #d2d0ce;
+  --shadow:      0 2px 12px rgba(0,0,0,.10);
+  --r:           10px;
+}
+body { font-family: "Segoe UI", system-ui, sans-serif; background: #f0f2f5; color: var(--text); min-height: 100vh; }
+header { background: linear-gradient(130deg, #003366 0%, var(--azure-blue) 55%, #5c2d91 100%); color: #fff; padding: 2.2rem 3rem 2rem; }
+header h1 { font-size: 1.75rem; font-weight: 700; }
+header p { margin-top: .4rem; opacity: .82; font-size: .93rem; }
+.badge-row { display: flex; gap: .5rem; margin-top: .9rem; flex-wrap: wrap; }
+.badge { background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3); border-radius: 20px; padding: .18rem .7rem; font-size: .75rem; font-weight: 600; }
+.page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 3rem; display: flex; flex-direction: column; gap: 1.5rem; }
+.card { background: #fff; border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+.card-title { font-size: .73rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 1rem 1.5rem .8rem; border-bottom: 1px solid #f0eded; }
+.diagram-wrap { padding: 1.5rem; }
+svg.arch { width: 100%; height: auto; display: block; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+.grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
+.info-card { background: #fff; border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); padding: 1.15rem 1.35rem; }
+.info-card h3 { font-size: .82rem; font-weight: 700; margin-bottom: .9rem; padding-bottom: .45rem; border-bottom: 2px solid; }
+.info-card h3.azure  { border-color: var(--azure-blue); color: var(--azure-dark); }
+.info-card h3.sec    { border-color: var(--green); color: var(--green); }
+.info-card h3.purple { border-color: var(--purple); color: var(--purple); }
+.info-card h3.dep    { border-color: #8a6914; color: #8a6914; }
+dl.kv { display: flex; flex-direction: column; gap: .38rem; font-size: .82rem; }
+dl.kv dt { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .4px; margin-top: .2rem; }
+dl.kv dd { font-weight: 500; }
+dl.kv dd code { font-family: "Consolas", monospace; font-size: .78rem; background: #f3f2f1; padding: .1rem .32rem; border-radius: 3px; }
+ol.steps { list-style: none; display: flex; flex-direction: column; gap: .55rem; font-size: .82rem; }
+ol.steps li { display: flex; gap: .6rem; align-items: flex-start; }
+ol.steps li .n { background: var(--azure-blue); color: #fff; border-radius: 50%; width: 20px; height: 20px; min-width: 20px; display: flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 700; margin-top: .08rem; }
+table { width: 100%; border-collapse: collapse; font-size: .81rem; }
+th { text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); padding: .4rem .8rem; border-bottom: 1px solid var(--border); }
+td { padding: .5rem .8rem; border-bottom: 1px solid #f4f3f2; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+.tag { display: inline-block; padding: .12rem .45rem; border-radius: 4px; font-size: .68rem; font-weight: 700; }
+.tag.allow { background: #dff6dd; color: #107c10; }
+.tag.deny  { background: #fde7e9; color: #a4262c; }
+pre.kql { background: #1e1e1e; color: #d4d4d4; padding: 1rem 1.2rem; border-radius: 6px; font-family: "Consolas", monospace; font-size: .78rem; line-height: 1.5; overflow-x: auto; }
+pre.kql .kw  { color: #569cd6; }
+pre.kql .fn  { color: #dcdcaa; }
+pre.kql .str { color: #ce9178; }
+pre.kql .cmt { color: #6a9955; }
+footer { text-align: center; padding: 1.8rem; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--border); margin-top: .5rem; }
+@media (max-width: 700px) { .grid2, .grid3 { grid-template-columns: 1fr; } header { padding: 1.5rem; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>NSG Diagnostics + VM Metrics — Architecture</h1>
+  <p>Centralized observability: NSG flow logs, VM performance counters, and syslog events → Log Analytics Workspace via Azure Monitor Agent</p>
+  <div class="badge-row">
+    <span class="badge">Sweden Central</span>
+    <span class="badge">Terraform</span>
+    <span class="badge">Log Analytics</span>
+    <span class="badge">Azure Monitor Agent</span>
+    <span class="badge">NSG Diagnostics</span>
+    <span class="badge">KQL</span>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- Architecture Diagram -->
+  <div class="card">
+    <div class="card-title">Architecture Diagram — Data Flow</div>
+    <div class="diagram-wrap">
+      <svg class="arch" viewBox="0 0 960 620" xmlns="http://www.w3.org/2000/svg" font-family="'Segoe UI', system-ui, sans-serif">
+        <defs>
+          <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#0078d4"/>
+          </marker>
+          <marker id="arr-green" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#107c10"/>
+          </marker>
+          <marker id="arr-purple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#5c2d91"/>
+          </marker>
+          <filter id="drop-shadow" x="-5%" y="-5%" width="115%" height="115%">
+            <feDropShadow dx="1" dy="2" stdDeviation="3" flood-opacity="0.10"/>
+          </filter>
+        </defs>
+
+        <!-- ─── Background bands ─── -->
+        <!-- Left zone label -->
+        <rect x="10" y="10" width="220" height="430" rx="10" fill="#f7f9fc" stroke="#d2d0ce" stroke-width="1"/>
+        <text x="120" y="30" text-anchor="middle" font-size="10" font-weight="700" fill="#605e5c" letter-spacing="1" text-transform="uppercase">DATA SOURCES</text>
+
+        <!-- Center zone label -->
+        <rect x="250" y="10" width="300" height="430" rx="10" fill="#f0f7ff" stroke="#c7dff5" stroke-width="1"/>
+        <text x="400" y="30" text-anchor="middle" font-size="10" font-weight="700" fill="#004578" letter-spacing="1">LOG ANALYTICS WORKSPACE</text>
+
+        <!-- Right zone label -->
+        <rect x="570" y="10" width="380" height="430" rx="10" fill="#f9f4ff" stroke="#ddd0f5" stroke-width="1"/>
+        <text x="760" y="30" text-anchor="middle" font-size="10" font-weight="700" fill="#5c2d91" letter-spacing="1">CONSUMERS</text>
+
+        <!-- Bottom band: VM Detail -->
+        <rect x="10" y="455" width="940" height="155" rx="10" fill="#f4f9f4" stroke="#b8ddb8" stroke-width="1"/>
+        <text x="480" y="474" text-anchor="middle" font-size="10" font-weight="700" fill="#107c10" letter-spacing="1">VM DETAIL — mi-6-vm (Ubuntu 22.04 LTS, Standard_B1s)</text>
+
+        <!-- ─── NSG Box (left, top) ─── -->
+        <rect x="30" y="55" width="185" height="120" rx="8" fill="#dff0fc" stroke="#0078d4" stroke-width="1.5" filter="url(#drop-shadow)"/>
+        <rect x="30" y="55" width="185" height="28" rx="8" fill="#0078d4"/>
+        <rect x="30" y="71" width="185" height="12" fill="#0078d4"/>
+        <text x="122" y="73" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">NSG — mi-6-nsg-frontend</text>
+        <text x="122" y="97" text-anchor="middle" font-size="9.5" fill="#004578" font-weight="600">sn-frontend · 10.6.1.0/24</text>
+        <text x="122" y="113" text-anchor="middle" font-size="8.5" fill="#004578">P100 Allow SSH :22</text>
+        <text x="122" y="127" text-anchor="middle" font-size="8.5" fill="#004578">P110 Allow HTTP :80</text>
+        <text x="122" y="141" text-anchor="middle" font-size="8.5" fill="#a4262c">P4000 Deny All Inbound</text>
+        <text x="122" y="158" text-anchor="middle" font-size="8" fill="#605e5c">VNet: mi-6-vnet · 10.6.0.0/16</text>
+
+        <!-- ─── VM Box (left, bottom) ─── -->
+        <rect x="30" y="210" width="185" height="105" rx="8" fill="#dff6dd" stroke="#107c10" stroke-width="1.5" filter="url(#drop-shadow)"/>
+        <rect x="30" y="210" width="185" height="28" rx="8" fill="#107c10"/>
+        <rect x="30" y="226" width="185" height="12" fill="#107c10"/>
+        <text x="122" y="228" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">VM — mi-6-vm</text>
+        <text x="122" y="252" text-anchor="middle" font-size="8.5" fill="#0a5c0a" font-weight="600">Ubuntu 22.04 LTS Gen2</text>
+        <text x="122" y="267" text-anchor="middle" font-size="8.5" fill="#0a5c0a">Standard_B1s · SystemAssigned</text>
+        <text x="122" y="282" text-anchor="middle" font-size="8.5" fill="#0a5c0a">NIC: mi-6-nic-vm (dynamic)</text>
+        <text x="122" y="297" text-anchor="middle" font-size="8.5" fill="#0a5c0a">PIP: mi-6-pip-vm (Static)</text>
+
+        <!-- AMA Extension badge -->
+        <rect x="50" y="303" width="145" height="16" rx="4" fill="#107c10"/>
+        <text x="122" y="314" text-anchor="middle" font-size="8" fill="#fff" font-weight="700">AzureMonitorLinuxAgent</text>
+
+        <!-- ─── DCR Box (left-center) ─── -->
+        <rect x="30" y="345" width="185" height="82" rx="8" fill="#fff4e8" stroke="#ca5010" stroke-width="1.5" filter="url(#drop-shadow)"/>
+        <rect x="30" y="345" width="185" height="24" rx="8" fill="#ca5010"/>
+        <rect x="30" y="357" width="185" height="12" fill="#ca5010"/>
+        <text x="122" y="361" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">DCR — mi-6-dcr</text>
+        <text x="122" y="384" text-anchor="middle" font-size="8.5" fill="#7a3000" font-weight="600">Syslog: auth/kern/syslog</text>
+        <text x="122" y="397" text-anchor="middle" font-size="8.5" fill="#7a3000">Perf Counters (60s interval)</text>
+        <text x="122" y="410" text-anchor="middle" font-size="8.5" fill="#7a3000">CPU · Memory · Disk · Network</text>
+
+        <!-- ─── Log Analytics Workspace (center) ─── -->
+        <rect x="268" y="50" width="265" height="380" rx="8" fill="#fff" stroke="#0078d4" stroke-width="2" filter="url(#drop-shadow)"/>
+        <rect x="268" y="50" width="265" height="32" rx="8" fill="#004578"/>
+        <rect x="268" y="70" width="265" height="12" fill="#004578"/>
+        <text x="400" y="71" text-anchor="middle" font-size="10.5" font-weight="700" fill="#fff">mi-6-law</text>
+        <text x="400" y="87" text-anchor="middle" font-size="8.5" fill="#a8d4f5">PerGB2018 · 30-day retention</text>
+
+        <!-- Table: AzureDiagnostics -->
+        <rect x="283" y="104" width="235" height="78" rx="6" fill="#dff0fc" stroke="#0078d4" stroke-width="1"/>
+        <text x="295" y="120" font-size="8.5" font-weight="700" fill="#004578">AzureDiagnostics</text>
+        <text x="295" y="135" font-size="8" fill="#0078d4">— NSG rule fired events</text>
+        <text x="295" y="149" font-size="8" fill="#605e5c">NetworkSecurityGroupEvent</text>
+        <text x="295" y="163" font-size="8" fill="#605e5c">NetworkSecurityGroupRuleCounter</text>
+        <rect x="430" y="107" width="80" height="14" rx="3" fill="#0078d4"/>
+        <text x="470" y="118" text-anchor="middle" font-size="7.5" fill="#fff" font-weight="700">NSG Diagnostic</text>
+
+        <!-- Table: Perf -->
+        <rect x="283" y="194" width="235" height="88" rx="6" fill="#dff6dd" stroke="#107c10" stroke-width="1"/>
+        <text x="295" y="210" font-size="8.5" font-weight="700" fill="#107c10">Perf</text>
+        <text x="295" y="225" font-size="8" fill="#107c10">— VM performance counters</text>
+        <text x="295" y="239" font-size="8" fill="#605e5c">% Processor Time</text>
+        <text x="295" y="252" font-size="8" fill="#605e5c">Available Bytes · Bytes Total/sec</text>
+        <text x="295" y="265" font-size="8" fill="#605e5c">% Free Space (60s intervals)</text>
+        <rect x="430" y="197" width="80" height="14" rx="3" fill="#107c10"/>
+        <text x="470" y="208" text-anchor="middle" font-size="7.5" fill="#fff" font-weight="700">AMA / DCR</text>
+
+        <!-- Table: Syslog -->
+        <rect x="283" y="294" width="235" height="68" rx="6" fill="#f4eefb" stroke="#5c2d91" stroke-width="1"/>
+        <text x="295" y="310" font-size="8.5" font-weight="700" fill="#5c2d91">Syslog</text>
+        <text x="295" y="325" font-size="8" fill="#5c2d91">— System log events</text>
+        <text x="295" y="339" font-size="8" fill="#605e5c">auth / kern / syslog facilities</text>
+        <text x="295" y="353" font-size="8" fill="#605e5c">Warn / Error / Crit / Alert / Emerg</text>
+        <rect x="430" y="297" width="80" height="14" rx="3" fill="#5c2d91"/>
+        <text x="470" y="308" text-anchor="middle" font-size="7.5" fill="#fff" font-weight="700">AMA / DCR</text>
+
+        <!-- Workspace footer -->
+        <text x="400" y="385" text-anchor="middle" font-size="8" fill="#605e5c">Region: swedencentral</text>
+        <text x="400" y="399" text-anchor="middle" font-size="8" fill="#605e5c">First 5 GB/day free · PerGB2018 pricing</text>
+        <text x="400" y="413" text-anchor="middle" font-size="8" fill="#605e5c">Retention: 30 days</text>
+
+        <!-- ─── Consumers (right) ─── -->
+        <!-- Azure Portal -->
+        <rect x="590" y="55" width="170" height="100" rx="8" fill="#f4eefb" stroke="#5c2d91" stroke-width="1.5" filter="url(#drop-shadow)"/>
+        <rect x="590" y="55" width="170" height="26" rx="8" fill="#5c2d91"/>
+        <rect x="590" y="69" width="170" height="12" fill="#5c2d91"/>
+        <text x="675" y="71" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">Azure Portal</text>
+        <text x="675" y="92" text-anchor="middle" font-size="8.5" fill="#3d1a6e">Workbooks &amp; Dashboards</text>
+        <text x="675" y="107" text-anchor="middle" font-size="8.5" fill="#3d1a6e">Metrics Explorer</text>
+        <text x="675" y="121" text-anchor="middle" font-size="8.5" fill="#3d1a6e">Log Analytics (KQL)</text>
+        <text x="675" y="136" text-anchor="middle" font-size="8.5" fill="#3d1a6e">Alerts &amp; Notifications</text>
+
+        <!-- KQL Query pane -->
+        <rect x="590" y="185" width="340" height="240" rx="8" fill="#1e1e1e" stroke="#3d3d3d" stroke-width="1.5" filter="url(#drop-shadow)"/>
+        <rect x="590" y="185" width="340" height="24" rx="8" fill="#252526"/>
+        <rect x="590" y="197" width="340" height="12" fill="#252526"/>
+        <text x="760" y="201" text-anchor="middle" font-size="9" font-weight="700" fill="#cccccc">KQL Query Editor</text>
+        <!-- Line numbers -->
+        <text x="608" y="223" font-size="7.5" fill="#6a9955">// NSG rule hits</text>
+        <text x="608" y="236" font-size="7.5" fill="#569cd6">AzureDiagnostics</text>
+        <text x="608" y="249" font-size="7.5" fill="#d4d4d4">| <tspan fill="#dcdcaa">where</tspan> ResourceType == <tspan fill="#ce9178">"NETWORKSECURITYGROUPS"</tspan></text>
+        <text x="608" y="262" font-size="7.5" fill="#d4d4d4">| <tspan fill="#dcdcaa">summarize</tspan> Hits = <tspan fill="#dcdcaa">sum</tspan>(matchedConnections_d)</text>
+        <text x="608" y="275" font-size="7.5" fill="#d4d4d4">| <tspan fill="#dcdcaa">sort by</tspan> Hits <tspan fill="#569cd6">desc</tspan></text>
+
+        <line x1="608" y1="284" x2="918" y2="284" stroke="#3d3d3d" stroke-width="0.5"/>
+
+        <text x="608" y="297" font-size="7.5" fill="#6a9955">// VM CPU performance</text>
+        <text x="608" y="310" font-size="7.5" fill="#569cd6">Perf</text>
+        <text x="608" y="323" font-size="7.5" fill="#d4d4d4">| <tspan fill="#dcdcaa">where</tspan> ObjectName == <tspan fill="#ce9178">"Processor Information"</tspan></text>
+        <text x="608" y="336" font-size="7.5" fill="#d4d4d4">| <tspan fill="#dcdcaa">summarize</tspan> <tspan fill="#dcdcaa">avg</tspan>(CounterValue) <tspan fill="#569cd6">by</tspan> <tspan fill="#dcdcaa">bin</tspan>(TimeGenerated, 5m)</text>
+        <text x="608" y="349" font-size="7.5" fill="#d4d4d4">| <tspan fill="#dcdcaa">render</tspan> <tspan fill="#569cd6">timechart</tspan></text>
+
+        <line x1="608" y1="358" x2="918" y2="358" stroke="#3d3d3d" stroke-width="0.5"/>
+
+        <text x="608" y="371" font-size="7.5" fill="#6a9955">// Syslog errors only</text>
+        <text x="608" y="384" font-size="7.5" fill="#569cd6">Syslog</text>
+        <text x="608" y="397" font-size="7.5" fill="#d4d4d4">| <tspan fill="#dcdcaa">where</tspan> SeverityLevel <tspan fill="#569cd6">in</tspan> (<tspan fill="#ce9178">"err"</tspan>, <tspan fill="#ce9178">"crit"</tspan>, <tspan fill="#ce9178">"alert"</tspan>)</text>
+        <text x="608" y="410" font-size="7.5" fill="#d4d4d4">| <tspan fill="#dcdcaa">sort by</tspan> TimeGenerated <tspan fill="#569cd6">desc</tspan></text>
+
+        <!-- ─── Bottom VM Detail band ─── -->
+        <!-- nginx box -->
+        <rect x="30" y="488" width="160" height="108" rx="7" fill="#fff" stroke="#107c10" stroke-width="1.5"/>
+        <rect x="30" y="488" width="160" height="22" rx="7" fill="#107c10"/>
+        <rect x="30" y="500" width="160" height="10" fill="#107c10"/>
+        <text x="110" y="502" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">nginx (web server)</text>
+        <text x="110" y="521" text-anchor="middle" font-size="8" fill="#0a5c0a">Listening on :80</text>
+        <text x="110" y="534" text-anchor="middle" font-size="8" fill="#605e5c">Installed via cloud-init</text>
+        <text x="110" y="547" text-anchor="middle" font-size="8" fill="#605e5c">Serves HTTP responses</text>
+        <text x="110" y="560" text-anchor="middle" font-size="8" fill="#605e5c">for log generation</text>
+
+        <!-- cron box -->
+        <rect x="210" y="488" width="185" height="108" rx="7" fill="#fff" stroke="#ca5010" stroke-width="1.5"/>
+        <rect x="210" y="488" width="185" height="22" rx="7" fill="#ca5010"/>
+        <rect x="210" y="500" width="185" height="10" fill="#ca5010"/>
+        <text x="302" y="502" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">cloud-init cron job</text>
+        <text x="302" y="521" text-anchor="middle" font-size="8" fill="#7a3000">* * * * * curl localhost</text>
+        <text x="302" y="534" text-anchor="middle" font-size="8" fill="#605e5c">Runs every minute</text>
+        <text x="302" y="547" text-anchor="middle" font-size="8" fill="#605e5c">Generates HTTP traffic</text>
+        <text x="302" y="560" text-anchor="middle" font-size="8" fill="#605e5c">→ populates NSG logs</text>
+        <text x="302" y="574" text-anchor="middle" font-size="8" fill="#605e5c">→ triggers Perf counters</text>
+
+        <!-- AMA detail box -->
+        <rect x="415" y="488" width="200" height="108" rx="7" fill="#fff" stroke="#107c10" stroke-width="1.5"/>
+        <rect x="415" y="488" width="200" height="22" rx="7" fill="#107c10"/>
+        <rect x="415" y="500" width="200" height="10" fill="#107c10"/>
+        <text x="515" y="502" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">Azure Monitor Agent</text>
+        <text x="515" y="521" text-anchor="middle" font-size="8" fill="#0a5c0a" font-weight="600">AzureMonitorLinuxAgent ext</text>
+        <text x="515" y="534" text-anchor="middle" font-size="8" fill="#605e5c">Publisher: Microsoft.Azure.Monitor</text>
+        <text x="515" y="547" text-anchor="middle" font-size="8" fill="#605e5c">Reads DCR instructions</text>
+        <text x="515" y="560" text-anchor="middle" font-size="8" fill="#605e5c">Collects Syslog + Perf</text>
+        <text x="515" y="574" text-anchor="middle" font-size="8" fill="#605e5c">Ships to Log Analytics</text>
+
+        <!-- NSG rules snippet -->
+        <rect x="635" y="488" width="305" height="108" rx="7" fill="#fff" stroke="#0078d4" stroke-width="1.5"/>
+        <rect x="635" y="488" width="305" height="22" rx="7" fill="#0078d4"/>
+        <rect x="635" y="500" width="305" height="10" fill="#0078d4"/>
+        <text x="787" y="502" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">NSG Rules — mi-6-nsg-frontend</text>
+        <text x="648" y="521" font-size="8" font-weight="700" fill="#605e5c">PRI    NAME            DIR   PORT  ACTION</text>
+        <line x1="648" y1="526" x2="930" y2="526" stroke="#d2d0ce" stroke-width="0.75"/>
+        <text x="648" y="540" font-size="8" fill="#1b1b1b">100    AllowSSH        In    22    </text>
+        <text x="810" y="540" font-size="8" font-weight="700" fill="#107c10">ALLOW</text>
+        <text x="648" y="554" font-size="8" fill="#1b1b1b">110    AllowHTTP       In    80    </text>
+        <text x="810" y="554" font-size="8" font-weight="700" fill="#107c10">ALLOW</text>
+        <text x="648" y="568" font-size="8" fill="#1b1b1b">4000   DenyAllInbound  In    *     </text>
+        <text x="810" y="568" font-size="8" font-weight="700" fill="#a4262c">DENY</text>
+        <text x="648" y="585" font-size="8" fill="#605e5c">Diagnostic Categories: Event + RuleCounter → mi-6-law</text>
+
+        <!-- ─── ARROWS ─── -->
+
+        <!-- NSG → LAW (blue dashed, Diagnostic Settings) -->
+        <line x1="215" y1="110" x2="265" y2="143" stroke="#0078d4" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-blue)"/>
+        <rect x="218" y="103" width="95" height="14" rx="3" fill="rgba(255,255,255,0.9)"/>
+        <text x="265" y="113" text-anchor="middle" font-size="7.5" fill="#004578" font-weight="600">Diagnostic Settings</text>
+
+        <!-- VM → DCR (green solid) -->
+        <line x1="122" y1="315" x2="122" y2="342" stroke="#107c10" stroke-width="1.5" marker-end="url(#arr-green)"/>
+        <rect x="74" y="325" width="96" height="12" rx="3" fill="rgba(255,255,255,0.85)"/>
+        <text x="122" y="334" text-anchor="middle" font-size="7.5" fill="#107c10" font-weight="600">AMA pipeline</text>
+
+        <!-- DCR → LAW (green solid) -->
+        <line x1="215" y1="382" x2="265" y2="280" stroke="#107c10" stroke-width="1.5" marker-end="url(#arr-green)"/>
+        <rect x="202" y="320" width="80" height="12" rx="3" fill="rgba(255,255,255,0.85)"/>
+        <text x="242" y="330" text-anchor="middle" font-size="7.5" fill="#107c10" font-weight="600">streams data</text>
+
+        <!-- LAW → Portal (purple dashed) -->
+        <line x1="533" y1="143" x2="587" y2="100" stroke="#5c2d91" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-purple)"/>
+        <rect x="530" y="103" width="72" height="12" rx="3" fill="rgba(255,255,255,0.85)"/>
+        <text x="566" y="112" text-anchor="middle" font-size="7.5" fill="#5c2d91" font-weight="600">KQL queries</text>
+
+        <!-- LAW → KQL pane (purple dashed) -->
+        <line x1="533" y1="280" x2="587" y2="290" stroke="#5c2d91" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arr-purple)"/>
+
+      </svg>
+    </div>
+  </div>
+
+  <!-- NSG Rules Table -->
+  <div class="card">
+    <div class="card-title">NSG Rules — mi-6-nsg-frontend</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Priority</th>
+          <th>Name</th>
+          <th>Direction</th>
+          <th>Protocol</th>
+          <th>Port</th>
+          <th>Source</th>
+          <th>Action</th>
+          <th>Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>100</strong></td>
+          <td><code>AllowSSH</code></td>
+          <td>Inbound</td>
+          <td>TCP</td>
+          <td>22</td>
+          <td>*</td>
+          <td><span class="tag allow">ALLOW</span></td>
+          <td>SSH management access to VM</td>
+        </tr>
+        <tr>
+          <td><strong>110</strong></td>
+          <td><code>AllowHTTP</code></td>
+          <td>Inbound</td>
+          <td>TCP</td>
+          <td>80</td>
+          <td>*</td>
+          <td><span class="tag allow">ALLOW</span></td>
+          <td>nginx HTTP traffic (log generation)</td>
+        </tr>
+        <tr>
+          <td><strong>4000</strong></td>
+          <td><code>DenyAllInbound</code></td>
+          <td>Inbound</td>
+          <td>*</td>
+          <td>*</td>
+          <td>*</td>
+          <td><span class="tag deny">DENY</span></td>
+          <td>Catch-all deny — blocks all other inbound</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Info cards row 1 -->
+  <div class="grid2">
+    <div class="info-card">
+      <h3 class="azure">Log Analytics Workspace — mi-6-law</h3>
+      <dl class="kv">
+        <dt>Resource Name</dt><dd><code>mi-6-law</code></dd>
+        <dt>SKU / Pricing</dt><dd>PerGB2018</dd>
+        <dt>Retention</dt><dd>30 days</dd>
+        <dt>Region</dt><dd>swedencentral</dd>
+        <dt>NSG Diagnostic Categories</dt><dd><code>NetworkSecurityGroupEvent</code>, <code>NetworkSecurityGroupRuleCounter</code></dd>
+        <dt>Tables Populated</dt><dd><code>AzureDiagnostics</code>, <code>Perf</code>, <code>Syslog</code></dd>
+      </dl>
+    </div>
+    <div class="info-card">
+      <h3 class="sec">Data Collection Rule — mi-6-dcr</h3>
+      <dl class="kv">
+        <dt>Resource Name</dt><dd><code>mi-6-dcr</code></dd>
+        <dt>Syslog Facilities</dt><dd><code>auth</code>, <code>kern</code>, <code>syslog</code></dd>
+        <dt>Syslog Min Severity</dt><dd>Warning / Error / Critical / Alert / Emergency</dd>
+        <dt>Syslog Stream</dt><dd><code>Microsoft-Syslog</code></dd>
+        <dt>Perf Counter Interval</dt><dd>60 seconds</dd>
+        <dt>Perf Stream</dt><dd><code>Microsoft-Perf</code></dd>
+        <dt>DCRA</dt><dd>Associated to <code>mi-6-vm</code></dd>
+      </dl>
+    </div>
+  </div>
+
+  <!-- Data Collection Rule detail -->
+  <div class="card">
+    <div class="card-title">DCR — Performance Counters Collected</div>
+    <div style="padding:1.2rem 1.5rem;">
+      <table>
+        <thead>
+          <tr>
+            <th>Counter Path</th>
+            <th>Metric</th>
+            <th>Interval</th>
+            <th>Target Table</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>\\Processor Information(_Total)\\% Processor Time</code></td>
+            <td>CPU utilisation (%)</td>
+            <td>60 s</td>
+            <td><code>Perf</code></td>
+          </tr>
+          <tr>
+            <td><code>\\Memory\\Available Bytes</code></td>
+            <td>Free RAM (bytes)</td>
+            <td>60 s</td>
+            <td><code>Perf</code></td>
+          </tr>
+          <tr>
+            <td><code>\\Network Interface(*)\\Bytes Total/sec</code></td>
+            <td>Network throughput (bytes/s)</td>
+            <td>60 s</td>
+            <td><code>Perf</code></td>
+          </tr>
+          <tr>
+            <td><code>\\Logical Disk(*)\\% Free Space</code></td>
+            <td>Disk free space (%)</td>
+            <td>60 s</td>
+            <td><code>Perf</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- KQL Queries -->
+  <div class="card">
+    <div class="card-title">KQL Queries</div>
+    <div style="padding:1.5rem; display:flex; flex-direction:column; gap:1.2rem;">
+
+      <div>
+        <p style="font-size:.78rem; font-weight:600; color:#004578; margin-bottom:.5rem;">NSG Rule Hit Counts</p>
+        <pre class="kql"><span class="cmt">// NSG rule hits — which rules fired and how many times</span>
+<span class="kw">AzureDiagnostics</span>
+<span class="fn">| where</span> ResourceType == <span class="str">"NETWORKSECURITYGROUPS"</span>
+<span class="fn">| where</span> Category == <span class="str">"NetworkSecurityGroupRuleCounter"</span>
+<span class="fn">| summarize</span> Hits = <span class="fn">sum</span>(matchedConnections_d) <span class="kw">by</span> ruleName_s, direction_s
+<span class="fn">| sort by</span> Hits <span class="kw">desc</span></pre>
+      </div>
+
+      <div>
+        <p style="font-size:.78rem; font-weight:600; color:#107c10; margin-bottom:.5rem;">VM CPU Utilisation (5-minute bins)</p>
+        <pre class="kql"><span class="cmt">// VM CPU — average processor time in 5-minute bins, rendered as time chart</span>
+<span class="kw">Perf</span>
+<span class="fn">| where</span> ObjectName == <span class="str">"Processor Information"</span> <span class="kw">and</span> CounterName == <span class="str">"% Processor Time"</span>
+<span class="fn">| summarize</span> <span class="fn">avg</span>(CounterValue) <span class="kw">by</span> <span class="fn">bin</span>(TimeGenerated, 5m), Computer
+<span class="fn">| render</span> <span class="kw">timechart</span></pre>
+      </div>
+
+      <div>
+        <p style="font-size:.78rem; font-weight:600; color:#5c2d91; margin-bottom:.5rem;">Syslog Errors and Above</p>
+        <pre class="kql"><span class="cmt">// Syslog — show only error-level and above events, most recent first</span>
+<span class="kw">Syslog</span>
+<span class="fn">| where</span> SeverityLevel <span class="kw">in</span> (<span class="str">"err"</span>, <span class="str">"crit"</span>, <span class="str">"alert"</span>, <span class="str">"emerg"</span>)
+<span class="fn">| project</span> TimeGenerated, Computer, Facility, SeverityLevel, SyslogMessage
+<span class="fn">| sort by</span> TimeGenerated <span class="kw">desc</span></pre>
+      </div>
+
+      <div>
+        <p style="font-size:.78rem; font-weight:600; color:#ca5010; margin-bottom:.5rem;">Network Throughput by Interface</p>
+        <pre class="kql"><span class="cmt">// Network throughput — bytes per second per interface, 5-minute averages</span>
+<span class="kw">Perf</span>
+<span class="fn">| where</span> ObjectName == <span class="str">"Network Interface"</span> <span class="kw">and</span> CounterName == <span class="str">"Bytes Total/sec"</span>
+<span class="fn">| summarize</span> <span class="fn">avg</span>(CounterValue) <span class="kw">by</span> <span class="fn">bin</span>(TimeGenerated, 5m), Computer, InstanceName
+<span class="fn">| render</span> <span class="kw">timechart</span></pre>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Bottom info row -->
+  <div class="grid3">
+    <div class="info-card">
+      <h3 class="dep">Pricing — PerGB2018</h3>
+      <dl class="kv">
+        <dt>Free Tier</dt><dd>First 5 GB/day included</dd>
+        <dt>Beyond Free Tier</dt><dd>~$2.76 / GB ingested</dd>
+        <dt>Retention (free)</dt><dd>30 days</dd>
+        <dt>Retention (paid)</dt><dd>31–730 days (~$0.10/GB/month)</dd>
+        <dt>SKU</dt><dd><code>PerGB2018</code></dd>
+        <dt>Tip</dt><dd>B1s VM + nginx cron stays well within free tier</dd>
+      </dl>
+    </div>
+    <div class="info-card">
+      <h3 class="azure">Virtual Machine — mi-6-vm</h3>
+      <dl class="kv">
+        <dt>OS Image</dt><dd>Ubuntu 22.04 LTS Gen2</dd>
+        <dt>Size</dt><dd>Standard_B1s (1 vCPU, 1 GB RAM)</dd>
+        <dt>Identity</dt><dd>SystemAssigned (required for AMA)</dd>
+        <dt>Public IP</dt><dd><code>mi-6-pip-vm</code> — Standard Static</dd>
+        <dt>NIC</dt><dd><code>mi-6-nic-vm</code> — dynamic private IP</dd>
+        <dt>Subnet</dt><dd><code>sn-frontend</code> (10.6.1.0/24)</dd>
+      </dl>
+    </div>
+    <div class="info-card">
+      <h3 class="sec">Data Pipeline Flow</h3>
+      <ol class="steps">
+        <li><span class="n">1</span>NSG processes traffic, diagnostic settings route event logs to <code>mi-6-law</code></li>
+        <li><span class="n">2</span>cloud-init cron runs <code>curl localhost</code> every minute, generating HTTP traffic and syslog entries</li>
+        <li><span class="n">3</span>AMA extension on the VM reads the DCR and collects Syslog + Perf counters</li>
+        <li><span class="n">4</span>AMA ships data to Log Analytics — populates <code>Perf</code> and <code>Syslog</code> tables</li>
+        <li><span class="n">5</span>KQL queries in Azure Portal visualise NSG hits, CPU, memory, and syslog errors</li>
+      </ol>
+    </div>
+  </div>
+
+</div>
+
+<footer>Azure Networking Lab · 6-log-analytics · Terraform · May 2026</footer>
+
+</body>
+</html>
