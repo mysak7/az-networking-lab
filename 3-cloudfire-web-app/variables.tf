@@ -21,3 +21,8 @@ variable "root_domain" {
   default     = "mysak.fun"
   description = "Root domain managed in Cloudflare"
 }
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token — set via TF_VAR_cloudflare_api_token or CLOUDFLARE_API_TOKEN env var"
+  sensitive   = true
+}

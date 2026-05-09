@@ -34,5 +34,5 @@ provider "azurerm" {
 }
 
 provider "cloudflare" {
-  # Reads CLOUDFLARE_API_TOKEN from environment
+  api_token = var.cloudflare_api_token
 }

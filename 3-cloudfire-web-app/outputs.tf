@@ -24,4 +24,5 @@ output "cloudflare_cname_target" {
 output "domain_verification_id" {
   value       = azurerm_linux_web_app.app.custom_domain_verification_id
   description = "App Service domain verification ID — stored in asuid TXT record"
+  sensitive   = true
 }
