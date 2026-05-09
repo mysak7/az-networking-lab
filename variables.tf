@@ -14,6 +14,6 @@ variable "admin_username" {
 }
 
 variable "vm_size" {
-  default     = "Standard_DS1_v2"
-  description = "VM size — DS1_v2 is cheap on-demand (1 vCPU, 3.5GB) from standardDSv2Family which has broad quota availability"
+  default     = "Standard_D2als_v7"
+  description = "VM size — D2als_v7 is cheap on-demand (2 vCPU, 4GB AMD) confirmed available in eastus2 with no capacity/quota restrictions"
 }
