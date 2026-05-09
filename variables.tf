@@ -14,6 +14,6 @@ variable "admin_username" {
 }
 
 variable "vm_size" {
-  default     = "Standard_B2s"
-  description = "VM size — B2s is cheap on-demand (2 vCPU, 4GB) and widely available in East US 2"
+  default     = "Standard_B2s_v2"
+  description = "VM size — B2s_v2 is cheap on-demand (2 vCPU, 4GB) and widely available in East US 2"
 }
