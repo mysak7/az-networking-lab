@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>cloudfire.mysak.fun</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cf-orange:  #f48120;
+      --cf-dark:    #404040;
+      --az-blue:    #0078d4;
+      --az-dark:    #004578;
+      --bg:         #0f0f0f;
+      --surface:    #1a1a1a;
+      --surface2:   #242424;
+      --border:     #2e2e2e;
+      --text:       #e8e8e8;
+      --muted:      #888;
+      --green:      #4caf82;
+      --radius:     10px;
+    }
+
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #1a0a00 0%, #2d1500 50%, #0d1f33 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 2.5rem 3rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    header::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 600px 300px at 20% 50%, rgba(244,129,32,.08) 0%, transparent 70%),
+        radial-gradient(ellipse 600px 300px at 80% 50%, rgba(0,120,212,.08) 0%, transparent 70%);
+    }
+
+    .header-inner { position: relative; max-width: 900px; margin: 0 auto; }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -.5px;
+    }
+
+    header h1 span.cf  { color: var(--cf-orange); }
+    header h1 span.az  { color: var(--az-blue); }
+
+    header p {
+      margin-top: .5rem;
+      color: var(--muted);
+      font-size: .95rem;
+      font-family: "Consolas", "Courier New", monospace;
+    }
+
+    .badge-row { display: flex; gap: .5rem; margin-top: 1.25rem; flex-wrap: wrap; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+      padding: .25rem .75rem;
+      border-radius: 20px;
+      font-size: .75rem;
+      font-weight: 600;
+      letter-spacing: .3px;
+      border: 1px solid;
+    }
+    .badge.cf  { color: var(--cf-orange); border-color: rgba(244,129,32,.35); background: rgba(244,129,32,.08); }
+    .badge.az  { color: var(--az-blue);   border-color: rgba(0,120,212,.35);  background: rgba(0,120,212,.08);  }
+    .badge.ok  { color: var(--green);     border-color: rgba(76,175,130,.35); background: rgba(76,175,130,.08); }
+
+    /* ── Main ── */
+    main {
+      flex: 1;
+      max-width: 900px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2.5rem 3rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    /* ── Traffic flow diagram ── */
+    .flow {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.75rem 2rem;
+    }
+
+    .flow h2 {
+      font-size: .8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+    }
+
+    .flow-steps {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: wrap;
+      row-gap: 1rem;
+    }
+
+    .step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .5rem;
+      flex: 1;
+      min-width: 120px;
+    }
+
+    .step-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+    }
+    .step-icon.browser { background: var(--surface2); border: 1px solid var(--border); }
+    .step-icon.cf      { background: rgba(244,129,32,.15); border: 1px solid rgba(244,129,32,.3); }
+    .step-icon.az      { background: rgba(0,120,212,.15);  border: 1px solid rgba(0,120,212,.3); }
+
+    .step-label { font-size: .8rem; font-weight: 600; text-align: center; }
+    .step-sub   { font-size: .7rem; color: var(--muted); text-align: center; max-width: 110px; }
+
+    .arrow {
+      color: var(--border);
+      font-size: 1.4rem;
+      padding: 0 .25rem;
+      flex-shrink: 0;
+      align-self: flex-start;
+      margin-top: 14px;
+    }
+    .arrow.cf { color: var(--cf-orange); }
+    .arrow.az { color: var(--az-blue); }
+
+    /* ── Info cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+    }
+
+    .card h3 {
+      font-size: .8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 1rem;
+    }
+    .card h3.cf { color: var(--cf-orange); }
+    .card h3.az { color: var(--az-blue); }
+
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: .55rem;
+    }
+
+    .feature-list li {
+      font-size: .85rem;
+      display: flex;
+      align-items: flex-start;
+      gap: .5rem;
+      color: #ccc;
+    }
+
+    .feature-list li::before {
+      content: "✓";
+      color: var(--green);
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    /* ── DNS card ── */
+    .dns-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+    }
+
+    .dns-card h3 {
+      font-size: .8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+
+    .dns-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .82rem;
+      font-family: "Consolas", "Courier New", monospace;
+    }
+
+    .dns-table th {
+      text-align: left;
+      color: var(--muted);
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      padding: .4rem .75rem;
+      border-bottom: 1px solid var(--border);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-weight: 600;
+    }
+
+    .dns-table td {
+      padding: .5rem .75rem;
+      border-bottom: 1px solid rgba(255,255,255,.04);
+      vertical-align: middle;
+    }
+
+    .dns-table tr:last-child td { border-bottom: none; }
+
+    .tag {
+      display: inline-block;
+      padding: .15rem .5rem;
+      border-radius: 4px;
+      font-size: .7rem;
+      font-weight: 600;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+    .tag.cname { background: rgba(244,129,32,.15); color: var(--cf-orange); }
+    .tag.txt   { background: rgba(76,175,130,.12); color: var(--green); }
+
+    .proxy-dot {
+      display: inline-flex;
+      align-items: center;
+      gap: .3rem;
+      font-size: .75rem;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+    .proxy-dot::before {
+      content: "●";
+      font-size: .6rem;
+    }
+    .proxy-dot.on  { color: var(--cf-orange); }
+    .proxy-dot.off { color: var(--muted); }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 1.5rem;
+      color: var(--muted);
+      font-size: .78rem;
+      border-top: 1px solid var(--border);
+    }
+
+    @media (max-width: 640px) {
+      header, main { padding: 1.5rem; }
+      .cards { grid-template-columns: 1fr; }
+      header h1 { font-size: 1.5rem; }
+      .flow-steps { justify-content: center; }
+      .arrow { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <h1><span class="cf">Cloudflare</span> + <span class="az">Azure</span> Lab</h1>
+    <p>cloudfire.mysak.fun</p>
+    <div class="badge-row">
+      <span class="badge cf">Cloudflare Free</span>
+      <span class="badge az">Azure App Service B1</span>
+      <span class="badge ok">TLS 1.2+</span>
+      <span class="badge ok">DDoS Protected</span>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- Traffic flow -->
+  <div class="flow">
+    <h2>Traffic Flow</h2>
+    <div class="flow-steps">
+      <div class="step">
+        <div class="step-icon browser">🌐</div>
+        <div class="step-label">Browser</div>
+        <div class="step-sub">HTTPS to cloudfire.mysak.fun</div>
+      </div>
+
+      <div class="arrow cf">›</div>
+
+      <div class="step">
+        <div class="step-icon cf">☁</div>
+        <div class="step-label">Cloudflare Edge</div>
+        <div class="step-sub">CDN · DDoS · SSL termination</div>
+      </div>
+
+      <div class="arrow az">›</div>
+
+      <div class="step">
+        <div class="step-icon az">⚙</div>
+        <div class="step-label">Azure App Service</div>
+        <div class="step-sub">B1 Linux · Cloudflare IPs only</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Feature cards -->
+  <div class="cards">
+    <div class="card">
+      <h3 class="cf">Cloudflare (Free)</h3>
+      <ul class="feature-list">
+        <li>Global CDN — 300+ PoPs</li>
+        <li>Unmetered DDoS mitigation</li>
+        <li>Automatic HTTPS for the domain</li>
+        <li>HTTP → HTTPS redirect at edge</li>
+        <li>TLS 1.2+ enforced</li>
+        <li>Full SSL mode to origin</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3 class="az">Azure App Service (B1)</h3>
+      <ul class="feature-list">
+        <li>Linux runtime — Python 3.11</li>
+        <li>Custom domain binding</li>
+        <li>IP restriction: Cloudflare only</li>
+        <li>Direct azurewebsites.net blocked</li>
+        <li>Always On — no cold starts</li>
+        <li>TLS 1.2 minimum</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- DNS records -->
+  <div class="dns-card">
+    <h3>Cloudflare DNS Records</h3>
+    <table class="dns-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Value</th>
+          <th>Proxy</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>cloudfire</td>
+          <td><span class="tag cname">CNAME</span></td>
+          <td>mi-cloudfire-&lt;suffix&gt;.azurewebsites.net</td>
+          <td><span class="proxy-dot on">Proxied</span></td>
+        </tr>
+        <tr>
+          <td>asuid.cloudfire</td>
+          <td><span class="tag txt">TXT</span></td>
+          <td>App Service verification ID</td>
+          <td><span class="proxy-dot off">DNS only</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<footer>
+  Azure Networking Lab · 3-cloudfire-web-app · Deployed with Terraform
+</footer>
+
+</body>
+</html>
