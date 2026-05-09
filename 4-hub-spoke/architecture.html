@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hub-and-Spoke Network — Architecture</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --azure-blue:  #0078d4;
+      --azure-dark:  #004578;
+      --azure-light: #dff0fc;
+      --green:       #107c10;
+      --green-light: #dff6dd;
+      --purple:      #5c2d91;
+      --purple-light:#f4eefb;
+      --text:        #1b1b1b;
+      --muted:       #605e5c;
+      --border:      #d2d0ce;
+      --shadow:      0 2px 12px rgba(0,0,0,.10);
+      --r:           10px;
+    }
+    body { font-family: "Segoe UI", system-ui, sans-serif; background: #f0f2f5; color: var(--text); min-height: 100vh; }
+    header { background: linear-gradient(130deg, #003366 0%, var(--azure-blue) 100%); color: #fff; padding: 2.2rem 3rem 2rem; }
+    header h1 { font-size: 1.75rem; font-weight: 700; }
+    header p { margin-top: .4rem; opacity: .82; font-size: .93rem; }
+    .badge-row { display: flex; gap: .5rem; margin-top: .9rem; flex-wrap: wrap; }
+    .badge { background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.3); border-radius: 20px; padding: .18rem .7rem; font-size: .75rem; font-weight: 600; }
+    .page { max-width: 1100px; margin: 0 auto; padding: 2rem 1.5rem 3rem; display: flex; flex-direction: column; gap: 1.5rem; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+    .card-title { font-size: .73rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); padding: 1rem 1.5rem .8rem; border-bottom: 1px solid #f0eded; }
+    .diagram-wrap { padding: 1.5rem; }
+    svg.arch { width: 100%; height: auto; display: block; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; }
+    .info-card { background: #fff; border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); padding: 1.15rem 1.35rem; }
+    .info-card h3 { font-size: .82rem; font-weight: 700; margin-bottom: .9rem; padding-bottom: .45rem; border-bottom: 2px solid; }
+    .info-card h3.azure  { border-color: var(--azure-blue); color: var(--azure-dark); }
+    .info-card h3.sec    { border-color: var(--green); color: var(--green); }
+    .info-card h3.purple { border-color: var(--purple); color: var(--purple); }
+    .info-card h3.dep    { border-color: #8a6914; color: #8a6914; }
+    dl.kv { display: flex; flex-direction: column; gap: .38rem; font-size: .82rem; }
+    dl.kv dt { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .4px; margin-top: .2rem; }
+    dl.kv dd { font-weight: 500; }
+    dl.kv dd code { font-family: "Consolas", monospace; font-size: .78rem; background: #f3f2f1; padding: .1rem .32rem; border-radius: 3px; }
+    ol.steps { list-style: none; display: flex; flex-direction: column; gap: .55rem; font-size: .82rem; }
+    ol.steps li { display: flex; gap: .6rem; align-items: flex-start; }
+    ol.steps li .n { background: var(--azure-blue); color: #fff; border-radius: 50%; width: 20px; height: 20px; min-width: 20px; display: flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 700; margin-top: .08rem; }
+    table.subnet-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    table.subnet-table th { background: #f3f2f1; text-align: left; padding: .55rem .85rem; font-size: .72rem; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); border-bottom: 2px solid var(--border); }
+    table.subnet-table td { padding: .5rem .85rem; border-bottom: 1px solid #f0eded; vertical-align: middle; }
+    table.subnet-table tr:last-child td { border-bottom: none; }
+    table.subnet-table tr:hover td { background: #fafafa; }
+    .vnet-hub td:first-child { border-left: 3px solid var(--azure-blue); }
+    .vnet-app td:first-child { border-left: 3px solid var(--green); }
+    .vnet-mgmt td:first-child { border-left: 3px solid var(--purple); }
+    .pill { display: inline-block; border-radius: 12px; padding: .1rem .55rem; font-size: .7rem; font-weight: 600; }
+    .pill-blue { background: var(--azure-light); color: var(--azure-dark); }
+    .pill-green { background: var(--green-light); color: var(--green); }
+    .pill-purple { background: var(--purple-light); color: var(--purple); }
+    .pill-nsg { background: #fff4ce; color: #8a6914; border: 1px solid #f0d080; }
+    footer { text-align: center; padding: 1.8rem; font-size: .78rem; color: var(--muted); border-top: 1px solid var(--border); margin-top: .5rem; }
+    @media (max-width: 700px) { .grid2, .grid3 { grid-template-columns: 1fr; } header { padding: 1.5rem; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Hub-and-Spoke Network</h1>
+  <p>Pure networking foundation — VNets, peering, NSGs, and private DNS zones ready for workloads</p>
+  <div class="badge-row">
+    <span class="badge">East US 2</span>
+    <span class="badge">Terraform</span>
+    <span class="badge">3 VNets</span>
+    <span class="badge">2 Peerings</span>
+    <span class="badge">2 Private DNS Zones</span>
+    <span class="badge">2 NSGs</span>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- Diagram -->
+  <div class="card">
+    <div class="card-title">Topology Diagram</div>
+    <div class="diagram-wrap">
+      <svg class="arch" viewBox="0 0 960 640" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="shadow" x="-8%" y="-8%" width="116%" height="116%">
+            <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="rgba(0,0,0,0.12)" />
+          </filter>
+          <filter id="shadow-sm" x="-5%" y="-5%" width="110%" height="110%">
+            <feDropShadow dx="0" dy="1" stdDeviation="2" flood-color="rgba(0,0,0,0.10)" />
+          </filter>
+          <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#0078d4" />
+          </marker>
+          <marker id="arrow-blue-rev" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#0078d4" />
+          </marker>
+          <marker id="arrow-purple" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#5c2d91" />
+          </marker>
+          <marker id="arrow-purple-rev" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto-start-reverse">
+            <path d="M0,0 L8,4 L0,8 Z" fill="#5c2d91" />
+          </marker>
+        </defs>
+
+        <!-- ============================================================ -->
+        <!-- APP SPOKE VNET (left) -->
+        <!-- ============================================================ -->
+        <rect x="24" y="60" width="240" height="310" rx="12" fill="#dff6dd" stroke="#107c10" stroke-width="1.5" filter="url(#shadow)" />
+        <!-- VNet label -->
+        <text x="144" y="84" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="11" font-weight="700" fill="#107c10">App Spoke VNet</text>
+        <text x="144" y="98" text-anchor="middle" font-family="Consolas,monospace" font-size="9.5" fill="#3a7d3a">10.1.0.0/16</text>
+        <!-- Network icon line -->
+        <line x1="50" y1="107" x2="238" y2="107" stroke="#107c10" stroke-width=".8" stroke-dasharray="3,3" opacity=".4" />
+
+        <!-- sn-web subnet -->
+        <rect x="42" y="118" width="206" height="62" rx="7" fill="#fff" stroke="#107c10" stroke-width="1" filter="url(#shadow-sm)" />
+        <text x="58" y="137" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="600" fill="#107c10">sn-web</text>
+        <text x="58" y="151" font-family="Consolas,monospace" font-size="9" fill="#605e5c">10.1.1.0/24</text>
+        <!-- NSG badge -->
+        <rect x="160" y="125" width="76" height="16" rx="8" fill="#fff4ce" stroke="#f0d080" stroke-width="1" />
+        <text x="198" y="137" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#8a6914">NSG attached</text>
+        <text x="58" y="167" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" fill="#605e5c">Web tier</text>
+
+        <!-- sn-app subnet -->
+        <rect x="42" y="192" width="206" height="62" rx="7" fill="#fff" stroke="#107c10" stroke-width="1" filter="url(#shadow-sm)" />
+        <text x="58" y="211" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="600" fill="#107c10">sn-app</text>
+        <text x="58" y="225" font-family="Consolas,monospace" font-size="9" fill="#605e5c">10.1.2.0/24</text>
+        <rect x="160" y="199" width="76" height="16" rx="8" fill="#fff4ce" stroke="#f0d080" stroke-width="1" />
+        <text x="198" y="211" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#8a6914">NSG attached</text>
+        <text x="58" y="241" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" fill="#605e5c">Application tier</text>
+
+        <!-- sn-pep subnet -->
+        <rect x="42" y="266" width="206" height="92" rx="7" fill="#fff" stroke="#107c10" stroke-width="1" filter="url(#shadow-sm)" />
+        <text x="58" y="285" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="600" fill="#107c10">sn-pep</text>
+        <text x="58" y="299" font-family="Consolas,monospace" font-size="9" fill="#605e5c">10.1.3.0/24</text>
+        <rect x="160" y="273" width="76" height="16" rx="8" fill="#fff4ce" stroke="#f0d080" stroke-width="1" />
+        <text x="198" y="285" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#8a6914">NSG attached</text>
+        <text x="58" y="315" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" fill="#605e5c">Private endpoints</text>
+        <text x="58" y="328" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">(reserved for future PEPs)</text>
+
+        <!-- NSG label below spoke -->
+        <rect x="44" y="374" width="218" height="18" rx="9" fill="#fff4ce" stroke="#f0d080" stroke-width="1" />
+        <text x="153" y="387" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="9" font-weight="700" fill="#8a6914">mi-nsg-spoke-app (all 3 subnets)</text>
+
+        <!-- ============================================================ -->
+        <!-- HUB VNET (center) -->
+        <!-- ============================================================ -->
+        <rect x="348" y="40" width="264" height="310" rx="12" fill="#dff0fc" stroke="#0078d4" stroke-width="2" filter="url(#shadow)" />
+        <text x="480" y="66" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="12" font-weight="700" fill="#004578">Hub VNet</text>
+        <text x="480" y="82" text-anchor="middle" font-family="Consolas,monospace" font-size="9.5" fill="#0078d4">10.0.0.0/16</text>
+        <line x1="372" y1="90" x2="596" y2="90" stroke="#0078d4" stroke-width=".8" stroke-dasharray="3,3" opacity=".4" />
+
+        <!-- sn-shared subnet -->
+        <rect x="368" y="102" width="224" height="98" rx="8" fill="#fff" stroke="#0078d4" stroke-width="1.2" filter="url(#shadow-sm)" />
+        <text x="386" y="122" font-family="Segoe UI,system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#004578">sn-shared</text>
+        <text x="386" y="138" font-family="Consolas,monospace" font-size="9" fill="#605e5c">10.0.1.0/24</text>
+        <text x="386" y="154" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" fill="#605e5c">Shared services</text>
+        <!-- Hub icon (star/asterisk) -->
+        <circle cx="554" cy="130" r="18" fill="#dff0fc" stroke="#0078d4" stroke-width="1.5" />
+        <text x="554" y="135" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="15" fill="#0078d4">&#9632;</text>
+        <text x="554" y="166" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="7.5" fill="#0078d4" font-weight="600">HUB</text>
+        <text x="386" y="170" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">(future: Firewall, Gateway, Bastion)</text>
+        <text x="386" y="183" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">Egress control &amp; routing</text>
+
+        <!-- sn-dns subnet -->
+        <rect x="368" y="212" width="224" height="118" rx="8" fill="#fff" stroke="#0078d4" stroke-width="1.2" filter="url(#shadow-sm)" />
+        <text x="386" y="232" font-family="Segoe UI,system-ui,sans-serif" font-size="10.5" font-weight="700" fill="#004578">sn-dns</text>
+        <text x="386" y="248" font-family="Consolas,monospace" font-size="9" fill="#605e5c">10.0.2.0/24</text>
+        <text x="386" y="264" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" fill="#605e5c">DNS resolver placeholder</text>
+        <!-- DNS icon -->
+        <circle cx="554" cy="250" r="18" fill="#dff0fc" stroke="#0078d4" stroke-width="1.5" />
+        <text x="554" y="255" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="13" fill="#0078d4">&#127760;</text>
+        <text x="386" y="282" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">(future: Azure DNS Private Resolver)</text>
+        <text x="386" y="296" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">Centralised DNS for all spokes</text>
+        <text x="386" y="310" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">Custom DNS forwarding rules</text>
+
+        <!-- ============================================================ -->
+        <!-- MGMT SPOKE VNET (right) -->
+        <!-- ============================================================ -->
+        <rect x="696" y="60" width="240" height="200" rx="12" fill="#f4eefb" stroke="#5c2d91" stroke-width="1.5" filter="url(#shadow)" />
+        <text x="816" y="84" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="11" font-weight="700" fill="#5c2d91">Mgmt Spoke VNet</text>
+        <text x="816" y="98" text-anchor="middle" font-family="Consolas,monospace" font-size="9.5" fill="#7b4bbf">10.2.0.0/16</text>
+        <line x1="720" y1="107" x2="912" y2="107" stroke="#5c2d91" stroke-width=".8" stroke-dasharray="3,3" opacity=".4" />
+
+        <!-- sn-tools subnet -->
+        <rect x="714" y="118" width="206" height="120" rx="7" fill="#fff" stroke="#5c2d91" stroke-width="1" filter="url(#shadow-sm)" />
+        <text x="730" y="137" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="600" fill="#5c2d91">sn-tools</text>
+        <text x="730" y="151" font-family="Consolas,monospace" font-size="9" fill="#605e5c">10.2.1.0/24</text>
+        <rect x="818" y="125" width="76" height="16" rx="8" fill="#fff4ce" stroke="#f0d080" stroke-width="1" />
+        <text x="856" y="137" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" font-weight="700" fill="#8a6914">NSG attached</text>
+        <text x="730" y="169" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" fill="#605e5c">Management &amp; tooling</text>
+        <text x="730" y="183" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">(future: Bastion, Jump VMs,</text>
+        <text x="730" y="196" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0"> monitoring agents)</text>
+        <text x="730" y="212" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">Centralised ops access</text>
+
+        <!-- NSG label below mgmt spoke -->
+        <rect x="714" y="278" width="206" height="18" rx="9" fill="#fff4ce" stroke="#f0d080" stroke-width="1" />
+        <text x="817" y="291" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="9" font-weight="700" fill="#8a6914">mi-nsg-spoke-mgmt</text>
+
+        <!-- ============================================================ -->
+        <!-- PEERING ARROWS: Hub <-> App Spoke -->
+        <!-- ============================================================ -->
+        <!-- Upper arrow: App Spoke -> Hub -->
+        <line x1="265" y1="185" x2="345" y2="185"
+              stroke="#0078d4" stroke-width="2"
+              marker-end="url(#arrow-blue)"
+              marker-start="url(#arrow-blue-rev)" />
+        <!-- Peering label -->
+        <rect x="272" y="168" width="68" height="15" rx="4" fill="#fff" stroke="#d2d0ce" stroke-width="1" />
+        <text x="306" y="179" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="8" font-weight="700" fill="#0078d4">VNet Peering</text>
+        <text x="306" y="210" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="7.5" fill="#605e5c">allow_forwarded</text>
+        <text x="306" y="220" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="7.5" fill="#605e5c">_traffic = true</text>
+
+        <!-- ============================================================ -->
+        <!-- PEERING ARROWS: Hub <-> Mgmt Spoke -->
+        <!-- ============================================================ -->
+        <line x1="614" y1="185" x2="694" y2="185"
+              stroke="#5c2d91" stroke-width="2"
+              marker-end="url(#arrow-purple)"
+              marker-start="url(#arrow-purple-rev)" />
+        <rect x="620" y="168" width="68" height="15" rx="4" fill="#fff" stroke="#d2d0ce" stroke-width="1" />
+        <text x="654" y="179" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="8" font-weight="700" fill="#5c2d91">VNet Peering</text>
+        <text x="654" y="210" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="7.5" fill="#605e5c">allow_forwarded</text>
+        <text x="654" y="220" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="7.5" fill="#605e5c">_traffic = true</text>
+
+        <!-- No direct spoke-to-spoke label -->
+        <line x1="265" y1="240" x2="694" y2="240" stroke="#d2d0ce" stroke-width="1.2" stroke-dasharray="5,4" />
+        <rect x="342" y="230" width="276" height="14" rx="4" fill="#fafafa" stroke="#d2d0ce" stroke-width="1" />
+        <text x="480" y="241" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a04040" font-weight="600">No direct spoke-to-spoke peering — traffic must traverse Hub</text>
+
+        <!-- ============================================================ -->
+        <!-- PRIVATE DNS ZONES band (bottom) -->
+        <!-- ============================================================ -->
+        <rect x="24" y="420" width="912" height="110" rx="12" fill="#f4eefb" stroke="#5c2d91" stroke-width="1.5" filter="url(#shadow)" />
+        <text x="480" y="442" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="11" font-weight="700" fill="#5c2d91">Private DNS Zones  —  Linked to all 3 VNets</text>
+        <line x1="48" y1="450" x2="912" y2="450" stroke="#5c2d91" stroke-width=".8" stroke-dasharray="3,3" opacity=".4" />
+
+        <!-- DNS Zone 1 -->
+        <rect x="60" y="460" width="360" height="54" rx="8" fill="#fff" stroke="#5c2d91" stroke-width="1" filter="url(#shadow-sm)" />
+        <text x="78" y="480" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="700" fill="#5c2d91">privatelink.blob.core.windows.net</text>
+        <text x="78" y="496" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" fill="#605e5c">Blob Storage private endpoints</text>
+        <text x="78" y="508" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">VNet links: hub · spoke-app · spoke-mgmt</text>
+
+        <!-- DNS Zone 2 -->
+        <rect x="540" y="460" width="356" height="54" rx="8" fill="#fff" stroke="#5c2d91" stroke-width="1" filter="url(#shadow-sm)" />
+        <text x="558" y="480" font-family="Segoe UI,system-ui,sans-serif" font-size="10" font-weight="700" fill="#5c2d91">privatelink.vaultcore.azure.net</text>
+        <text x="558" y="496" font-family="Segoe UI,system-ui,sans-serif" font-size="8.5" fill="#605e5c">Key Vault private endpoints</text>
+        <text x="558" y="508" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#a0a0a0">VNet links: hub · spoke-app · spoke-mgmt</text>
+
+        <!-- DNS link lines up to VNets -->
+        <!-- Line from DNS band to App Spoke VNet -->
+        <line x1="144" y1="420" x2="144" y2="370" stroke="#5c2d91" stroke-width="1.2" stroke-dasharray="4,3" opacity=".6" marker-end="url(#arrow-purple)" />
+        <!-- Line from DNS band to Hub VNet -->
+        <line x1="480" y1="420" x2="480" y2="352" stroke="#5c2d91" stroke-width="1.2" stroke-dasharray="4,3" opacity=".6" marker-end="url(#arrow-purple)" />
+        <!-- Line from DNS band to Mgmt Spoke VNet -->
+        <line x1="816" y1="420" x2="816" y2="302" stroke="#5c2d91" stroke-width="1.2" stroke-dasharray="4,3" opacity=".6" marker-end="url(#arrow-purple)" />
+
+        <!-- DNS link labels -->
+        <rect x="54" y="395" width="38" height="12" rx="3" fill="#f4eefb" stroke="#c0a8e0" stroke-width=".8" />
+        <text x="73" y="405" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="7.5" fill="#5c2d91" font-weight="600">3 links</text>
+        <rect x="456" y="382" width="48" height="12" rx="3" fill="#f4eefb" stroke="#c0a8e0" stroke-width=".8" />
+        <text x="480" y="392" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="7.5" fill="#5c2d91" font-weight="600">3 links ea.</text>
+        <rect x="790" y="308" width="38" height="12" rx="3" fill="#f4eefb" stroke="#c0a8e0" stroke-width=".8" />
+        <text x="809" y="318" text-anchor="middle" font-family="Segoe UI,system-ui,sans-serif" font-size="7.5" fill="#5c2d91" font-weight="600">3 links</text>
+
+        <!-- Legend -->
+        <rect x="24" y="540" width="912" height="26" rx="7" fill="rgba(255,255,255,0.7)" stroke="#d2d0ce" stroke-width="1" />
+        <rect x="40" y="549" width="14" height="8" rx="2" fill="#dff0fc" stroke="#0078d4" stroke-width="1.2" />
+        <text x="58" y="556" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#605e5c">Hub VNet</text>
+        <rect x="120" y="549" width="14" height="8" rx="2" fill="#dff6dd" stroke="#107c10" stroke-width="1.2" />
+        <text x="138" y="556" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#605e5c">App Spoke VNet</text>
+        <rect x="228" y="549" width="14" height="8" rx="2" fill="#f4eefb" stroke="#5c2d91" stroke-width="1.2" />
+        <text x="246" y="556" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#605e5c">Mgmt Spoke VNet</text>
+        <rect x="356" y="549" width="14" height="8" rx="2" fill="#fff4ce" stroke="#f0d080" stroke-width="1" />
+        <text x="374" y="556" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#605e5c">NSG attached</text>
+        <line x1="450" y1="553" x2="480" y2="553" stroke="#0078d4" stroke-width="2" marker-end="url(#arrow-blue)" />
+        <text x="488" y="556" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#605e5c">VNet Peering (bidirectional)</text>
+        <line x1="610" y1="553" x2="640" y2="553" stroke="#5c2d91" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arrow-purple)" />
+        <text x="648" y="556" font-family="Segoe UI,system-ui,sans-serif" font-size="8" fill="#605e5c">DNS Zone VNet Link</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- VNet & Subnet Table -->
+  <div class="card">
+    <div class="card-title">VNet &amp; Subnet Reference</div>
+    <div style="padding: 0 1.5rem 1.5rem;">
+      <table class="subnet-table">
+        <thead>
+          <tr>
+            <th>VNet</th>
+            <th>Role</th>
+            <th>Address Space</th>
+            <th>Subnet</th>
+            <th>CIDR</th>
+            <th>Purpose</th>
+            <th>NSG</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="vnet-hub">
+            <td rowspan="2"><span class="pill pill-blue">Hub</span></td>
+            <td rowspan="2">Transit &amp; shared services</td>
+            <td rowspan="2"><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">10.0.0.0/16</code></td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">sn-shared</code></td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">10.0.1.0/24</code></td>
+            <td style="font-size:.8rem;color:#605e5c;">Shared services (future: Firewall, Bastion, Gateway)</td>
+            <td style="font-size:.8rem;color:#a0a0a0;">—</td>
+          </tr>
+          <tr class="vnet-hub">
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">sn-dns</code></td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">10.0.2.0/24</code></td>
+            <td style="font-size:.8rem;color:#605e5c;">DNS resolver placeholder (future: Private Resolver)</td>
+            <td style="font-size:.8rem;color:#a0a0a0;">—</td>
+          </tr>
+          <tr class="vnet-app">
+            <td rowspan="3"><span class="pill pill-green">App Spoke</span></td>
+            <td rowspan="3">Application workloads</td>
+            <td rowspan="3"><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">10.1.0.0/16</code></td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">sn-web</code></td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">10.1.1.0/24</code></td>
+            <td style="font-size:.8rem;color:#605e5c;">Web / frontend tier</td>
+            <td><span class="pill pill-nsg" style="font-size:.7rem;">mi-nsg-spoke-app</span></td>
+          </tr>
+          <tr class="vnet-app">
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">sn-app</code></td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">10.1.2.0/24</code></td>
+            <td style="font-size:.8rem;color:#605e5c;">Application / backend tier</td>
+            <td><span class="pill pill-nsg" style="font-size:.7rem;">mi-nsg-spoke-app</span></td>
+          </tr>
+          <tr class="vnet-app">
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">sn-pep</code></td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">10.1.3.0/24</code></td>
+            <td style="font-size:.8rem;color:#605e5c;">Private endpoints (reserved, no PEPs yet)</td>
+            <td><span class="pill pill-nsg" style="font-size:.7rem;">mi-nsg-spoke-app</span></td>
+          </tr>
+          <tr class="vnet-mgmt">
+            <td><span class="pill pill-purple">Mgmt Spoke</span></td>
+            <td>Operations &amp; management</td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">10.2.0.0/16</code></td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">sn-tools</code></td>
+            <td><code style="font-family:Consolas,monospace;font-size:.78rem;background:#f3f2f1;padding:.1rem .32rem;border-radius:3px;">10.2.1.0/24</code></td>
+            <td style="font-size:.8rem;color:#605e5c;">Management tooling (future: Bastion, Jump VMs)</td>
+            <td><span class="pill pill-nsg" style="font-size:.7rem;">mi-nsg-spoke-mgmt</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Info cards: 3-column row -->
+  <div class="grid3">
+
+    <!-- Peering topology -->
+    <div class="info-card">
+      <h3 class="azure">Peering Topology</h3>
+      <ol class="steps">
+        <li>
+          <span class="n">1</span>
+          <span>Hub &harr; App Spoke and Hub &harr; Mgmt Spoke are each a bidirectional peering pair (<code>allow_forwarded_traffic = true</code>).</span>
+        </li>
+        <li>
+          <span class="n">2</span>
+          <span>There is <strong>no direct peering</strong> between App Spoke and Mgmt Spoke. Traffic between spokes must traverse the hub.</span>
+        </li>
+        <li>
+          <span class="n">3</span>
+          <span>A future Azure Firewall or NVA in <code>sn-shared</code> can inspect and filter all cross-spoke flows via UDRs.</span>
+        </li>
+        <li>
+          <span class="n">4</span>
+          <span>New spokes are added by peering to the hub only — no mesh updates needed across existing spokes.</span>
+        </li>
+      </ol>
+    </div>
+
+    <!-- Private DNS -->
+    <div class="info-card">
+      <h3 class="purple">Private DNS Zones</h3>
+      <dl class="kv">
+        <dt>Zone 1</dt>
+        <dd><code>privatelink.blob.core.windows.net</code></dd>
+        <dt>Zone 2</dt>
+        <dd><code>privatelink.vaultcore.azure.net</code></dd>
+        <dt>VNet Links per Zone</dt>
+        <dd>3 — hub, spoke-app, spoke-mgmt</dd>
+        <dt>Registration</dt>
+        <dd>Auto-registration disabled; A-records added by private endpoint creation</dd>
+        <dt>Hosted in</dt>
+        <dd>Hub resource group</dd>
+        <dt>Purpose</dt>
+        <dd>Future private endpoints in any spoke resolve Blob Storage and Key Vault via private IP — no custom DNS config required in VMs</dd>
+      </dl>
+    </div>
+
+    <!-- NSG Coverage -->
+    <div class="info-card">
+      <h3 class="sec">NSG Coverage</h3>
+      <dl class="kv">
+        <dt>mi-nsg-spoke-app</dt>
+        <dd>Attached to <code>sn-web</code>, <code>sn-app</code>, and <code>sn-pep</code></dd>
+        <dt>mi-nsg-spoke-mgmt</dt>
+        <dd>Attached to <code>sn-tools</code></dd>
+        <dt>Hub subnets</dt>
+        <dd>No NSG yet — reserved for when Firewall / Gateway subnets are added (those have specific NSG requirements)</dd>
+        <dt>Default rules</dt>
+        <dd>Azure platform defaults only; no custom rules defined in this lab</dd>
+        <dt>Next step</dt>
+        <dd>Add deny-all inbound rules and allowlist specific ports per tier as workloads are deployed</dd>
+      </dl>
+    </div>
+
+  </div>
+
+  <!-- Design rationale full-width card -->
+  <div class="info-card">
+    <h3 class="dep">Design Rationale &amp; What This Lab Provides</h3>
+    <div class="grid2" style="margin-top:.6rem;">
+      <dl class="kv">
+        <dt>Pattern</dt>
+        <dd>Hub-and-spoke — the standard Azure enterprise network topology</dd>
+        <dt>No VMs or actual workloads</dt>
+        <dd>This is a <strong>pure networking foundation</strong>. VNets, peerings, NSGs, and DNS zones are provisioned and ready; no compute is deployed.</dd>
+        <dt>Address space sizing</dt>
+        <dd>/16 per VNet gives 65 536 IPs per VNet — deliberate over-provisioning so future subnet slicing does not require re-addressing</dd>
+        <dt>Region</dt>
+        <dd>East US 2 (all resources in a single region for cost and latency)</dd>
+      </dl>
+      <dl class="kv">
+        <dt>Extensibility</dt>
+        <dd>Add spoke VNets by peering to the hub; DNS zones are already linked so private endpoints work immediately</dd>
+        <dt>Cost profile</dt>
+        <dd>Near-zero — VNet peering charges apply only when data traverses the peering. No VMs, no gateways, no firewalls.</dd>
+        <dt>Next modules can add</dt>
+        <dd>Azure Firewall (sn-shared), VPN/ER Gateway, Bastion (sn-shared), Private Resolver (sn-dns), AKS in sn-app, Storage/KeyVault with PEPs in sn-pep</dd>
+        <dt>IAC</dt>
+        <dd>Terraform — single <code>main.tf</code>, <code>variables.tf</code>, <code>outputs.tf</code>; no modules needed at this scale</dd>
+      </dl>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  Azure Networking Lab &middot; 4-hub-spoke &middot; Terraform &middot; May 2026
+</footer>
+
+</body>
+</html>
