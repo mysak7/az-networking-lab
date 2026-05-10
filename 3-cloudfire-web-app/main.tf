@@ -64,12 +64,19 @@ resource "azurerm_linux_web_app" "app" {
       python_version = "3.11"
     }
 
-    # Python's built-in HTTP server serves index.html from wwwroot
-    app_command_line = "python3 -m http.server 8080"
+    app_command_line = "python3 -m http.server 8080 --bind 0.0.0.0 --directory /home/site/wwwroot"
 
     # SCM (Kudu/deploy endpoint) keeps separate open restrictions so
     # az webapp deploy below is not blocked by the main-site rule.
     scm_use_main_ip_restriction = false
+
+    # Allow Azure's internal warmup/health probe (168.63.129.16 is Azure's platform IP)
+    ip_restriction {
+      name       = "azure-platform"
+      action     = "Allow"
+      priority   = 50
+      ip_address = "168.63.129.16/32"
+    }
 
     # Allow only Cloudflare IPs — direct access to azurewebsites.net is blocked
     dynamic "ip_restriction" {
@@ -105,11 +112,18 @@ resource "local_file" "index_html" {
   content  = file("${path.module}/landing.html")
 }
 
+# Empty requirements.txt so Oryx recognises this as a Python app and
+# runs app_command_line instead of the default hostingstart handler.
+resource "local_file" "requirements_txt" {
+  filename = "${path.module}/.deploy/requirements.txt"
+  content  = ""
+}
+
 data "archive_file" "app_zip" {
   type        = "zip"
   source_dir  = "${path.module}/.deploy"
   output_path = "${path.module}/app.zip"
-  depends_on  = [local_file.index_html]
+  depends_on  = [local_file.index_html, local_file.requirements_txt]
 }
 
 resource "null_resource" "deploy_app" {
