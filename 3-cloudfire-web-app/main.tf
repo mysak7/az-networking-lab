@@ -61,10 +61,10 @@ resource "azurerm_linux_web_app" "app" {
     ip_restriction_default_action = "Deny"
 
     application_stack {
-      python_version = "3.11"
+      node_version = "20-lts"
     }
 
-    app_command_line = "python3 -m http.server 8080 --bind 0.0.0.0 --directory /home/site/wwwroot"
+    app_command_line = "node server.js"
 
     # SCM (Kudu/deploy endpoint) keeps separate open restrictions so
     # az webapp deploy below is not blocked by the main-site rule.
@@ -91,7 +91,8 @@ resource "azurerm_linux_web_app" "app" {
   }
 
   app_settings = {
-    WEBSITES_PORT = "8080"
+    WEBSITES_PORT                  = "8080"
+    SCM_DO_BUILD_DURING_DEPLOYMENT = "false"
   }
 }
 
@@ -112,18 +113,47 @@ resource "local_file" "index_html" {
   content  = file("${path.module}/landing.html")
 }
 
-# Empty requirements.txt so Oryx recognises this as a Python app and
-# runs app_command_line instead of the default hostingstart handler.
-resource "local_file" "requirements_txt" {
-  filename = "${path.module}/.deploy/requirements.txt"
+resource "local_file" "server_js" {
+  filename = "${path.module}/.deploy/server.js"
+  content  = <<-JS
+    const http = require('http');
+    const fs   = require('fs');
+    const path = require('path');
+    const PORT = process.env.WEBSITES_PORT || process.env.PORT || 8080;
+    const BASE = '/home/site/wwwroot';
+    http.createServer((req, res) => {
+      const p = req.url === '/' ? 'index.html' : req.url.replace(/^\//, '');
+      fs.readFile(path.join(BASE, p), (err, data) => {
+        if (err) { res.writeHead(404); return res.end('Not found'); }
+        const mime = p.endsWith('.html') ? 'text/html' : 'text/plain';
+        res.writeHead(200, { 'Content-Type': mime });
+        res.end(data);
+      });
+    }).listen(PORT, '0.0.0.0');
+  JS
+}
+
+resource "local_file" "robots_warmup" {
+  filename = "${path.module}/.deploy/robots933456.txt"
   content  = ""
+}
+
+# package.json is required for the Node.js App Service container to invoke
+# app_command_line ("node server.js") instead of falling back to static file serving.
+resource "local_file" "package_json" {
+  filename = "${path.module}/.deploy/package.json"
+  content  = jsonencode({
+    name    = "app"
+    version = "1.0.0"
+    scripts = { start = "node server.js" }
+  })
 }
 
 data "archive_file" "app_zip" {
   type        = "zip"
   source_dir  = "${path.module}/.deploy"
   output_path = "${path.module}/app.zip"
-  depends_on  = [local_file.index_html, local_file.requirements_txt]
+  depends_on  = [local_file.index_html, local_file.server_js, local_file.robots_warmup, local_file.package_json]
 }
 
 resource "null_resource" "deploy_app" {
@@ -132,7 +162,7 @@ resource "null_resource" "deploy_app" {
   }
 
   provisioner "local-exec" {
-    command = "az webapp deploy --resource-group ${azurerm_resource_group.rg.name} --name ${local.app_name} --src-path ${data.archive_file.app_zip.output_path} --type zip --async true"
+    command = "az webapp deploy --resource-group ${azurerm_resource_group.rg.name} --name ${local.app_name} --src-path ${data.archive_file.app_zip.output_path} --type zip"
   }
 
   depends_on = [azurerm_linux_web_app.app, data.archive_file.app_zip]
