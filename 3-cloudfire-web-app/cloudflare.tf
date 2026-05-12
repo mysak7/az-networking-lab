@@ -19,7 +19,7 @@ resource "cloudflare_dns_record" "verify_txt" {
 resource "cloudflare_zone_setting" "ssl" {
   zone_id    = var.cloudflare_zone_id
   setting_id = "ssl"
-  value      = "full"
+  value      = "full_strict"
 }
 
 resource "cloudflare_zone_setting" "min_tls_version" {
