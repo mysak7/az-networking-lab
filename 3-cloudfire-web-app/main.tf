@@ -134,7 +134,9 @@ data "archive_file" "app_zip" {
 
 resource "null_resource" "deploy_app" {
   triggers = {
-    html_hash = local_file.index_html.content_md5
+    html_hash    = local_file.index_html.content_md5
+    server_hash  = local_file.server_js.content_md5
+    package_hash = local_file.package_json.content_md5
   }
 
   provisioner "local-exec" {
