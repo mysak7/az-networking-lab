@@ -100,6 +100,10 @@ resource "local_file" "server_js" {
     http.createServer((req, res) => {
       const p = req.url === '/' ? 'index.html' : req.url.replace(/^\//, '');
       fs.readFile(path.join(BASE, p), (err, data) => {
+        const status = err ? 404 : 200;
+        const clientIp = req.headers['cf-connecting-ip'] || req.socket.remoteAddress;
+        const cfRay    = req.headers['cf-ray'] || '-';
+        console.log(JSON.stringify({ ts: new Date().toISOString(), method: req.method, url: req.url, status, clientIp, cfRay }));
         if (err) { res.writeHead(404); return res.end('Not found'); }
         const mime = p.endsWith('.html') ? 'text/html' : 'text/plain';
         res.writeHead(200, { 'Content-Type': mime });
