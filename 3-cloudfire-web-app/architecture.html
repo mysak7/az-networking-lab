@@ -148,7 +148,7 @@
     <span class="badge ok">Azure B1 ~$13/mo</span>
     <span class="badge">East US 2</span>
     <span class="badge">Terraform managed</span>
-    <span class="badge">Python 3.11</span>
+    <span class="badge">Node.js 20 LTS</span>
   </div>
 </header>
 
@@ -206,7 +206,7 @@
         <rect x="380" y="175" width="200" height="100" rx="8" fill="#fff" stroke="#f4a55a" stroke-width="1.5"/>
         <text x="480" y="204" font-size="12" font-weight="700" fill="#7a3000" text-anchor="middle">TLS &amp; SSL</text>
         <text x="480" y="222" font-size="10" fill="#605e5c" text-anchor="middle">Terminates TLS from browser</text>
-        <text x="480" y="237" font-size="10" fill="#605e5c" text-anchor="middle">Mode: Full (not Strict)</text>
+        <text x="480" y="237" font-size="10" fill="#605e5c" text-anchor="middle">Mode: Full Strict (cert validated)</text>
         <text x="480" y="252" font-size="10" fill="#605e5c" text-anchor="middle">Always HTTPS · min TLS 1.2</text>
 
         <!-- Proxy (orange cloud) -->
@@ -219,14 +219,14 @@
         <!-- Zone Settings -->
         <rect x="790" y="175" width="150" height="100" rx="8" fill="#fff" stroke="#f4a55a" stroke-width="1.5"/>
         <text x="865" y="200" font-size="12" font-weight="700" fill="#7a3000" text-anchor="middle">Zone Settings</text>
-        <text x="865" y="218" font-size="10" fill="#605e5c" text-anchor="middle">ssl = "full"</text>
+        <text x="865" y="218" font-size="10" fill="#605e5c" text-anchor="middle">ssl = "full_strict"</text>
         <text x="865" y="233" font-size="10" fill="#605e5c" text-anchor="middle">min_tls_version = 1.2</text>
         <text x="865" y="248" font-size="10" fill="#605e5c" text-anchor="middle">always_use_https = on</text>
 
         <!-- ░░ Arrow: CF → Azure ░░ -->
         <line x1="480" y1="275" x2="480" y2="347" stroke="#0078d4" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr-blue)"/>
         <rect x="320" y="285" width="320" height="22" rx="4" fill="#dff0fc" opacity=".9"/>
-        <text x="480" y="300" font-size="10" fill="#004578" text-anchor="middle">Encrypted HTTPS (Full SSL) — Cloudflare IPs only allowed</text>
+        <text x="480" y="300" font-size="10" fill="#004578" text-anchor="middle">Encrypted HTTPS (Full Strict SSL) — Cloudflare IPs only allowed</text>
 
         <!-- ░░ AZURE: App Service Plan + App ░░ -->
         <!-- App Service Plan -->
@@ -241,7 +241,7 @@
         <!-- App Service (Web App) -->
         <rect x="285" y="355" width="390" height="115" rx="8" fill="#fff" stroke="#5ab3f0" stroke-width="2"/>
         <text x="480" y="381" font-size="12" font-weight="700" fill="#004578" text-anchor="middle">Azure Linux Web App</text>
-        <text x="480" y="399" font-size="10" fill="#605e5c" text-anchor="middle">Runtime: Python 3.11 · python3 -m http.server 8080</text>
+        <text x="480" y="399" font-size="10" fill="#605e5c" text-anchor="middle">Runtime: Node.js 20 LTS · node server.js (logs CF-Connecting-IP)</text>
         <text x="480" y="414" font-size="10" fill="#605e5c" text-anchor="middle">HTTPS only · min TLS 1.2</text>
         <text x="480" y="429" font-size="10" fill="#605e5c" text-anchor="middle">Custom domain: cloudfire.mysak.fun (TXT verified)</text>
         <text x="480" y="444" font-size="10" fill="#605e5c" text-anchor="middle">IP Restriction: Allow 22 Cloudflare ranges · Default Deny</text>
@@ -250,8 +250,8 @@
         <!-- IP Restriction callout -->
         <rect x="700" y="355" width="240" height="115" rx="8" fill="#fff" stroke="#107c10" stroke-width="1.5"/>
         <text x="820" y="381" font-size="12" font-weight="700" fill="#107c10" text-anchor="middle">IP Firewall</text>
-        <text x="820" y="399" font-size="10" fill="#605e5c" text-anchor="middle">Cloudflare IPv4: 15 ranges</text>
-        <text x="820" y="414" font-size="10" fill="#605e5c" text-anchor="middle">Cloudflare IPv6: 7 ranges</text>
+        <text x="820" y="399" font-size="10" fill="#605e5c" text-anchor="middle">IPv4 + IPv6: dynamic</text>
+        <text x="820" y="414" font-size="10" fill="#605e5c" text-anchor="middle">cloudflare_ip_ranges data source</text>
         <text x="820" y="429" font-size="10" fill="#605e5c" text-anchor="middle">Default action: Deny</text>
         <text x="820" y="444" font-size="10" fill="#605e5c" text-anchor="middle">Direct .azurewebsites.net</text>
         <text x="820" y="459" font-size="10" fill="#605e5c" text-anchor="middle">access → 403 Forbidden</text>
@@ -337,7 +337,7 @@
       <h3 class="cf">Cloudflare Free Features</h3>
       <dl class="kv">
         <dt>SSL Mode</dt>
-        <dd>Full — encrypted to origin, cert not validated</dd>
+        <dd>Full Strict — encrypted to origin, cert validated</dd>
         <dt>Proxy</dt>
         <dd>Orange cloud — origin IP hidden</dd>
         <dt>DDoS</dt>
@@ -355,15 +355,15 @@
       <h3 class="azure">Azure App Service (B1)</h3>
       <dl class="kv">
         <dt>OS / Runtime</dt>
-        <dd>Linux · Python 3.11</dd>
+        <dd>Linux · Node.js 20 LTS</dd>
         <dt>Startup</dt>
-        <dd><code>python3 -m http.server 8080</code></dd>
+        <dd><code>node server.js</code></dd>
         <dt>Custom domain</dt>
         <dd><code>cloudfire.mysak.fun</code></dd>
         <dt>TLS</dt>
         <dd>https_only = true · min 1.2</dd>
         <dt>IP Restriction</dt>
-        <dd>22 Cloudflare ranges · Default Deny</dd>
+        <dd>Dynamic Cloudflare ranges · Default Deny</dd>
         <dt>SCM endpoint</dt>
         <dd>Separate rules — open for deploy</dd>
       </dl>
@@ -375,7 +375,7 @@
         <dt>Why</dt>
         <dd>Prevents bypass of Cloudflare via direct .azurewebsites.net access</dd>
         <dt>How</dt>
-        <dd>22 CF IP ranges (IPv4 + IPv6) allowed; default = Deny</dd>
+        <dd>Dynamic CF IP ranges via <code>cloudflare_ip_ranges</code> data source; default = Deny</dd>
         <dt>SCM</dt>
         <dd>scm_use_main_ip_restriction = false so Kudu stays accessible</dd>
         <dt>Verify</dt>
@@ -397,7 +397,7 @@
         <dt>Deploy</dt>
         <dd><code>az webapp deploy --type zip</code> via <code>null_resource</code></dd>
         <dt>Re-deploy trigger</dt>
-        <dd>MD5 hash of <code>landing.html</code> content</dd>
+        <dd>MD5 hash of <code>landing.html</code> + <code>server.js</code> + <code>package.json</code></dd>
         <dt>SCM restriction</dt>
         <dd>Main-site IP rules don't apply to SCM endpoint</dd>
       </dl>
@@ -413,6 +413,46 @@
         <li><span class="n">5</span>App Service custom domain bound via TXT verification (works with orange cloud)</li>
         <li><span class="n">6</span>Deploy zips <code>landing.html</code> and uploads via <code>az webapp deploy</code></li>
       </ol>
+    </div>
+
+  </div>
+
+  <div class="grid2">
+
+    <div class="info-card">
+      <h3 class="cf">Rate Limiting (Cloudflare Ruleset)</h3>
+      <dl class="kv">
+        <dt>Resource</dt>
+        <dd><code>cloudflare_ruleset</code> · phase: <code>http_ratelimit</code></dd>
+        <dt>Threshold</dt>
+        <dd>100 requests / 60 s per IP</dd>
+        <dt>Action</dt>
+        <dd>Block — HTTP 429, body: "Too many requests"</dd>
+        <dt>Mitigation timeout</dt>
+        <dd>60 s cooldown after threshold hit</dd>
+        <dt>Scope</dt>
+        <dd>All requests (<code>expression = "true"</code>)</dd>
+        <dt>Cost</dt>
+        <dd>Free — up to 5 rules on free plan</dd>
+      </dl>
+    </div>
+
+    <div class="info-card">
+      <h3 class="azure">Observability — Log Analytics</h3>
+      <dl class="kv">
+        <dt>Workspace</dt>
+        <dd><code>${var.prefix}-3-cloudfire-law</code> · PerGB2018 · 30 days</dd>
+        <dt>AppServiceHTTPLogs</dt>
+        <dd>Every request: URI, status, duration, Cloudflare edge IP</dd>
+        <dt>AppServiceConsoleLogs</dt>
+        <dd>Node.js stdout — JSON lines with <code>clientIp</code> (CF-Connecting-IP) + <code>cfRay</code></dd>
+        <dt>AppServiceIPSecAuditLogs</dt>
+        <dd>Which IP restriction rule allowed / blocked each hit</dd>
+        <dt>AppServicePlatformLogs</dt>
+        <dd>Deployments, restarts, platform events</dd>
+        <dt>AllMetrics</dt>
+        <dd>CPU, memory, request count, response time</dd>
+      </dl>
     </div>
 
   </div>
