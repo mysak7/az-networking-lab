@@ -26,3 +26,13 @@ output "domain_verification_id" {
   description = "App Service domain verification ID — stored in asuid TXT record"
   sensitive   = true
 }
+
+output "log_analytics_workspace_id" {
+  value       = azurerm_log_analytics_workspace.law.id
+  description = "Log Analytics Workspace resource ID"
+}
+
+output "log_analytics_portal_url" {
+  value       = "https://portal.azure.com/#resource${azurerm_log_analytics_workspace.law.id}/logs"
+  description = "Direct link to Log Analytics query blade in Azure Portal"
+}
