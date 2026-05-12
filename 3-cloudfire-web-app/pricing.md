@@ -12,22 +12,20 @@
 |---|---|---|---|
 | **Azure App Service Plan (Basic B1)** | 1 core, 1.75 GB RAM, Linux | $0.018 / hr | $13.14 |
 | **Cloudflare** | Free plan | — | $0.00 |
-| **Azure DNS Zone** (mysak.fun) | NS updated to Cloudflare — zone still exists | $0.50 / zone | $0.50 |
 
 ### Total Estimate
 
 | | |
 |---|---|
-| **Monthly** | **~$13.64 / month** |
-| **Primary driver** | App Service Plan B1 (96% of total) |
+| **Monthly** | **~$13.14 / month** |
+| **Primary driver** | App Service Plan B1 (100% of total) |
 
 ---
 
 ## Cost by Category
 
 ```
-App Service B1   ████████████████████████████████  ~$13.14  (96%)
-Azure DNS Zone                                       ~$0.50   (4%)
+App Service B1   ████████████████████████████████  ~$13.14  (100%)
 Cloudflare Free  (free)                              $0.00
 ```
 
