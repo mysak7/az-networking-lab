@@ -33,3 +33,32 @@ resource "cloudflare_zone_setting" "always_use_https" {
   setting_id = "always_use_https"
   value      = "on"
 }
+
+resource "cloudflare_ruleset" "rate_limit" {
+  zone_id = var.cloudflare_zone_id
+  name    = "Rate Limiting"
+  kind    = "zone"
+  phase   = "http_ratelimit"
+
+  rules = [
+    {
+      action      = "block"
+      description = "Block IPs exceeding 100 req/min"
+      enabled     = true
+      expression  = "true"
+      action_parameters = {
+        response = {
+          status_code  = 429
+          content_type = "text/plain"
+          content      = "Too many requests"
+        }
+      }
+      ratelimit = {
+        characteristics     = ["cf.colo.id", "ip.src"]
+        period              = 60
+        requests_per_period = 100
+        mitigation_timeout  = 60
+      }
+    }
+  ]
+}
