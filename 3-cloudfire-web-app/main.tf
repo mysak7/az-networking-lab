@@ -9,7 +9,7 @@ data "cloudflare_ip_ranges" "cf" {}
 locals {
   app_name       = "${var.prefix}-3-cloudfire-${random_string.suffix.result}"
   fqdn           = "${var.subdomain}.${var.root_domain}"
-  cloudflare_ips = concat(data.cloudflare_ip_ranges.cf.ipv4_cidr_blocks, data.cloudflare_ip_ranges.cf.ipv6_cidr_blocks)
+  cloudflare_ips = concat(data.cloudflare_ip_ranges.cf.ipv4_cidrs, data.cloudflare_ip_ranges.cf.ipv6_cidrs)
 }
 
 resource "azurerm_resource_group" "rg" {
